@@ -30,13 +30,14 @@ const (
 )
 
 type Chat struct {
-	ID         string
-	AccountID  string
-	Network    string
-	Name       string
-	AvatarURL  string
-	IsGroup    bool
-	IsArchived bool
+	ID           string
+	AccountID    string
+	Network      string
+	Name         string
+	AvatarURL    string
+	Participants []Sender
+	IsGroup      bool
+	IsArchived   bool
 }
 
 type Sender struct {
@@ -96,6 +97,7 @@ type MatrixOutbound struct {
 	SenderID      string
 	SenderName    string
 	SenderMXID    string
+	SenderAvatar  *MatrixMedia
 	SortKey       string
 	Body          string
 	HTML          string

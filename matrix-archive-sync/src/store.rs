@@ -48,6 +48,8 @@ pub struct MediaRefRecord {
     pub field_path: String,
     pub mxc_uri: String,
     pub object_hash: Option<String>,
+    pub mimetype: Option<String>,
+    pub original_filename: Option<String>,
     pub encrypted_file_json: Option<Value>,
 }
 
@@ -463,7 +465,14 @@ impl ArchiveStore {
 
     pub fn media_refs_for_event(&self, event_id: &str) -> Result<Vec<MediaRefRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT event_id, field_path, mxc_uri, object_hash, encrypted_file_json_zstd FROM media_refs WHERE event_id=?",
+            r#"
+            SELECT mr.event_id, mr.field_path, mr.mxc_uri, mr.object_hash,
+                   mo.mimetype, mo.original_filename, mr.encrypted_file_json_zstd
+            FROM media_refs mr
+            LEFT JOIN media_objects mo ON mo.object_hash = mr.object_hash
+            WHERE mr.event_id=?
+            ORDER BY mr.field_path, mr.mxc_uri
+            "#,
         )?;
         let rows = stmt.query_map([event_id], read_media_ref)?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -530,12 +539,14 @@ fn read_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<EventRecord> {
 }
 
 fn read_media_ref(row: &rusqlite::Row<'_>) -> rusqlite::Result<MediaRefRecord> {
-    let encrypted: Option<Vec<u8>> = row.get(4)?;
+    let encrypted: Option<Vec<u8>> = row.get(6)?;
     Ok(MediaRefRecord {
         event_id: row.get(0)?,
         field_path: row.get(1)?,
         mxc_uri: row.get(2)?,
         object_hash: row.get(3)?,
+        mimetype: row.get(4)?,
+        original_filename: row.get(5)?,
         encrypted_file_json: encrypted
             .as_deref()
             .map(decompress_json)

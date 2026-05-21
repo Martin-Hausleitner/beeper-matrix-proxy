@@ -3,7 +3,7 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use html_escape::encode_text;
+use html_escape::{encode_double_quoted_attribute, encode_text};
 use serde::Serialize;
 
 use crate::store::{ArchiveStore, EventRecord, MediaRefRecord, RoomRecord};
@@ -68,7 +68,9 @@ pub fn export_html(store: &ArchiveStore, archive_dir: &Path, output_dir: &Path) 
         .meta { color: #666; font-size: .9rem; }
         .marker { display: inline-block; border: 1px solid #bbb; border-radius: 4px; padding: 0 .25rem; margin-left: .25rem; color: #555; font-size: .8rem; }
         .body { white-space: pre-wrap; margin-top: .35rem; }
-        .media { margin-top: .35rem; }
+        .media { margin-top: .45rem; }
+        .media img, .media video { max-width: min(620px, 100%); max-height: 520px; border-radius: 6px; display: block; }
+        .media audio { width: min(620px, 100%); display: block; }
         "#,
     )?;
     Ok(())
@@ -125,11 +127,7 @@ fn render_event(
         html.push_str("<div class=\"media\">");
         if let Some(object_hash) = &media_ref.object_hash {
             let relative = object_relative_link(archive_dir, output_dir, object_hash)?;
-            html.push_str("<a href=\"");
-            html.push_str(&encode_text(&relative));
-            html.push_str("\">");
-            html.push_str(&encode_text(&media_ref.mxc_uri));
-            html.push_str("</a>");
+            render_media_object(html, event, media_ref, &relative);
         } else {
             html.push_str("<span class=\"marker\">missing media</span> ");
             html.push_str(&encode_text(&media_ref.mxc_uri));
@@ -138,6 +136,57 @@ fn render_event(
     }
     html.push_str("</article>");
     Ok(())
+}
+
+fn render_media_object(
+    html: &mut String,
+    event: &EventRecord,
+    media_ref: &MediaRefRecord,
+    relative: &str,
+) {
+    let href = encode_double_quoted_attribute(relative);
+    let label = media_ref
+        .original_filename
+        .as_deref()
+        .unwrap_or(&media_ref.mxc_uri);
+    let alt = encode_double_quoted_attribute(label);
+    let mime = media_ref.mimetype.as_deref().unwrap_or_default();
+    let msgtype = event.msgtype.as_deref().unwrap_or_default();
+    if mime.starts_with("image/") || msgtype == "m.image" {
+        html.push_str("<a href=\"");
+        html.push_str(&href);
+        html.push_str("\"><img loading=\"lazy\" src=\"");
+        html.push_str(&href);
+        html.push_str("\" alt=\"");
+        html.push_str(&alt);
+        html.push_str("\"></a>");
+        return;
+    }
+    if mime.starts_with("video/") || msgtype == "m.video" {
+        html.push_str("<video controls preload=\"metadata\" src=\"");
+        html.push_str(&href);
+        html.push_str("\"></video><a href=\"");
+        html.push_str(&href);
+        html.push_str("\">");
+        html.push_str(&encode_text(label));
+        html.push_str("</a>");
+        return;
+    }
+    if mime.starts_with("audio/") || msgtype == "m.audio" {
+        html.push_str("<audio controls preload=\"metadata\" src=\"");
+        html.push_str(&href);
+        html.push_str("\"></audio><a href=\"");
+        html.push_str(&href);
+        html.push_str("\">");
+        html.push_str(&encode_text(label));
+        html.push_str("</a>");
+        return;
+    }
+    html.push_str("<a href=\"");
+    html.push_str(&href);
+    html.push_str("\">");
+    html.push_str(&encode_text(label));
+    html.push_str("</a>");
 }
 
 fn room_display_name(room: &RoomRecord) -> String {
@@ -270,6 +319,8 @@ mod tests {
             object_hash: Some(
                 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
             ),
+            mimetype: None,
+            original_filename: None,
             encrypted_file_json: None,
         })?;
         let out = dir.path().join("html");
@@ -277,6 +328,67 @@ mod tests {
         let html = fs::read_to_string(out.join("rooms").join("_room_local.html"))?;
         assert!(html.contains("redacted media hidden"));
         assert!(!html.contains("mxc://server/redacted-media"));
+        Ok(())
+    }
+
+    #[test]
+    fn html_export_embeds_readable_media_controls() -> Result<()> {
+        let dir = tempdir()?;
+        let store = ArchiveStore::open(dir.path())?;
+        store.upsert_room(&RoomRecord {
+            room_id: "!room:local".into(),
+            name: Some("Room".into()),
+            canonical_alias: None,
+            avatar_mxc: None,
+            joined_at: Some(0),
+            last_prev_batch: None,
+            backfill_token: None,
+            backfill_done: true,
+        })?;
+        store.insert_event(&EventRecord {
+            event_id: "$image".into(),
+            room_id: "!room:local".into(),
+            origin_server_ts: Some(0),
+            sender: Some("@a:local".into()),
+            event_type: "m.room.message".into(),
+            state_key: None,
+            msgtype: Some("m.image".into()),
+            relates_to_event_id: None,
+            relation_type: None,
+            redacts_event_id: None,
+            is_encrypted: false,
+            is_redacted: false,
+            body_text: Some("photo".into()),
+            formatted_body_html: None,
+            raw_event: serde_json::json!({"event_id": "$image"}),
+            decrypted_event: None,
+            canonical_sha256: "hash".into(),
+            received_at: 0,
+            source_batch: "test".into(),
+        })?;
+        let object_hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        store.insert_media_object(
+            object_hash,
+            12,
+            Some("image/png"),
+            Some("photo.png"),
+            "objects/sha256/bb/bb/object",
+        )?;
+        store.insert_media_ref(&MediaRefRecord {
+            event_id: "$image".into(),
+            field_path: "content.url".into(),
+            mxc_uri: "mxc://server/photo".into(),
+            object_hash: Some(object_hash.into()),
+            mimetype: None,
+            original_filename: None,
+            encrypted_file_json: None,
+        })?;
+        let out = dir.path().join("html");
+        export_html(&store, dir.path(), &out)?;
+        let html = fs::read_to_string(out.join("rooms").join("_room_local.html"))?;
+        assert!(html.contains("<img loading=\"lazy\""));
+        assert!(html.contains("alt=\"photo.png\""));
+        assert!(html.contains("../objects/sha256/bb/bb/"));
         Ok(())
     }
 }

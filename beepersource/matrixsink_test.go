@@ -173,6 +173,88 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 	}
 }
 
+func TestMatrixClientSinkAddsSenderAvatarToPerMessageProfile(t *testing.T) {
+	var uploadedContentType string
+	var profileAvatarURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/upload"):
+			uploadedContentType = r.Header.Get("Content-Type")
+			_ = json.NewEncoder(w).Encode(map[string]string{"content_uri": "mxc://local/sender-avatar"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/send/m.room.message/"):
+			var body struct {
+				Profile struct {
+					AvatarURL string `json:"avatar_url"`
+				} `json:"com.beeper.per_message_profile"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode send body: %v", err)
+			}
+			profileAvatarURL = body.Profile.AvatarURL
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$event:local"})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = sink.SendMessage(ctx, MatrixOutbound{
+		RoomID:        "!room:local",
+		MessageID:     "$m1",
+		SenderID:      "@alice:signal",
+		SenderName:    "Alice",
+		Body:          "hello",
+		MsgType:       "m.text",
+		TransactionID: "txn-avatar",
+		SenderAvatar: &MatrixMedia{
+			AssetID:   "localmxc://alice-avatar",
+			Content:   bytes.NewReader([]byte("avatar")),
+			FileName:  "alice.png",
+			MimeType:  "image/png",
+			SizeBytes: 6,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploadedContentType != "image/png" {
+		t.Fatalf("expected sender avatar upload content-type, got %q", uploadedContentType)
+	}
+	if profileAvatarURL != "mxc://local/sender-avatar" {
+		t.Fatalf("expected per-message profile avatar URL, got %q", profileAvatarURL)
+	}
+
+	_, err = sink.SendMessage(ctx, MatrixOutbound{
+		RoomID:        "!room:local",
+		MessageID:     "$m2",
+		SenderID:      "@alice:signal",
+		SenderName:    "Alice",
+		Body:          "cached",
+		MsgType:       "m.text",
+		TransactionID: "txn-avatar-cached",
+		SenderAvatar: &MatrixMedia{
+			AssetID: "localmxc://alice-avatar",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profileAvatarURL != "mxc://local/sender-avatar" {
+		t.Fatalf("expected cached per-message profile avatar URL, got %q", profileAvatarURL)
+	}
+}
+
 func TestPortalProfileCanOmitPlatformFromRoomName(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Matrix.RoomNamePrefix = ""

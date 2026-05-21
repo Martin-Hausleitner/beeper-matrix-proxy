@@ -234,14 +234,24 @@ func (a *DesktopAPIAdapter) RemoveReaction(ctx context.Context, chatID, messageI
 }
 
 func convertSDKChat(in beeperdesktopapi.Chat) Chat {
+	participants := make([]Sender, 0, len(in.Participants.Items))
+	for _, item := range in.Participants.Items {
+		displayName := firstNonEmpty(item.FullName, item.Username, item.ID)
+		participants = append(participants, Sender{
+			ID:          item.ID,
+			DisplayName: displayName,
+			AvatarID:    item.ImgURL,
+		})
+	}
 	return Chat{
-		ID:         in.ID,
-		AccountID:  in.AccountID,
-		Network:    in.Network,
-		Name:       in.Title,
-		AvatarURL:  in.ImgURL,
-		IsGroup:    string(in.Type) == "group",
-		IsArchived: in.IsArchived,
+		ID:           in.ID,
+		AccountID:    in.AccountID,
+		Network:      in.Network,
+		Name:         in.Title,
+		AvatarURL:    in.ImgURL,
+		Participants: participants,
+		IsGroup:      string(in.Type) == "group",
+		IsArchived:   in.IsArchived,
 	}
 }
 

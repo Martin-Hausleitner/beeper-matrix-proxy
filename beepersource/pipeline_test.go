@@ -334,6 +334,53 @@ func TestReconcileDownloadsChatAvatarForNewPortal(t *testing.T) {
 	}
 }
 
+func TestReconcileAddsParticipantAvatarToPerMessageProfile(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{
+			ID:        "!chat:beeper",
+			AccountID: "signal",
+			Name:      "Participant Avatar Test",
+			Participants: []Sender{{
+				ID:          "@alice:signal",
+				DisplayName: "Alice",
+				AvatarID:    "localmxc://alice-avatar",
+			}},
+		}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:        "$beeper-with-avatar",
+				ChatID:    "!chat:beeper",
+				SenderID:  "@alice:signal",
+				Type:      MessageTypeText,
+				Text:      "hello",
+				Timestamp: time.Unix(100, 0).UTC(),
+			}},
+		},
+		assets: map[string]string{"localmxc://alice-avatar": "alice-avatar-bytes"},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if len(api.downloadedAssets) != 1 || api.downloadedAssets[0] != "localmxc://alice-avatar" {
+		t.Fatalf("expected participant avatar download, got %#v", api.downloadedAssets)
+	}
+	if len(matrix.events) != 1 || matrix.events[0].SenderAvatar == nil {
+		t.Fatalf("expected Matrix event with sender avatar, got %#v", matrix.events)
+	}
+	if matrix.events[0].SenderName != "Alice" {
+		t.Fatalf("expected participant display name, got %q", matrix.events[0].SenderName)
+	}
+	if matrix.events[0].SenderAvatar.AssetID != "localmxc://alice-avatar" {
+		t.Fatalf("expected sender avatar asset ID, got %#v", matrix.events[0].SenderAvatar)
+	}
+}
+
 func TestReconcileResolvesRelativeBeeperAvatarURL(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)

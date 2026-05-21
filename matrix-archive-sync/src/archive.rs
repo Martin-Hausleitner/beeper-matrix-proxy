@@ -224,6 +224,8 @@ impl Archiver {
                 field_path: media_ref.field_path.clone(),
                 mxc_uri: media_ref.mxc_uri.clone(),
                 object_hash: None,
+                mimetype: None,
+                original_filename: None,
                 encrypted_file_json: media_ref.encrypted_file_json.clone(),
             })?;
             if download_media {

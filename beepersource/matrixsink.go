@@ -444,7 +444,7 @@ func (m *MatrixClientSink) requestContext(ctx context.Context) (context.Context,
 }
 
 func (m *MatrixClientSink) uploadAvatar(ctx context.Context, avatar *MatrixMedia) (id.ContentURIString, *event.FileInfo, error) {
-	if avatar == nil || avatar.Content == nil {
+	if avatar == nil {
 		return "", nil, nil
 	}
 	if avatar.AssetID != "" {
@@ -458,6 +458,9 @@ func (m *MatrixClientSink) uploadAvatar(ctx context.Context, avatar *MatrixMedia
 				Size:     int(cached.SizeBytes),
 			}, nil
 		}
+	}
+	if avatar.Content == nil {
+		return "", nil, nil
 	}
 	upload, err := m.client.UploadMedia(ctx, mautrix.ReqUploadMedia{
 		Content:       avatar.Content,
@@ -542,14 +545,24 @@ func (m *MatrixClientSink) RedactMessage(ctx context.Context, roomID string, eve
 }
 
 func (m *MatrixClientSink) messageContent(ctx context.Context, outbound MatrixOutbound) (*event.MessageEventContent, error) {
+	profile := &event.BeeperPerMessageProfile{
+		ID:          outbound.SenderID,
+		Displayname: outbound.SenderName,
+		HasFallback: true,
+	}
+	if outbound.SenderAvatar != nil {
+		avatarURL, _, err := m.uploadAvatar(ctx, outbound.SenderAvatar)
+		if err != nil {
+			return nil, err
+		}
+		if avatarURL != "" {
+			profile.AvatarURL = &avatarURL
+		}
+	}
 	content := &event.MessageEventContent{
-		MsgType: event.MessageType(outbound.MsgType),
-		Body:    outbound.Body,
-		BeeperPerMessageProfile: &event.BeeperPerMessageProfile{
-			ID:          outbound.SenderID,
-			Displayname: outbound.SenderName,
-			HasFallback: true,
-		},
+		MsgType:                 event.MessageType(outbound.MsgType),
+		Body:                    outbound.Body,
+		BeeperPerMessageProfile: profile,
 	}
 	if outbound.Media != nil {
 		upload, err := m.client.UploadMedia(ctx, mautrix.ReqUploadMedia{
