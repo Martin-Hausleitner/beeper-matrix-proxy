@@ -117,7 +117,9 @@ fn render_event(
         html.push_str("<div class=\"body\"><em>redacted or deleted</em></div>");
     }
     if event.is_redacted && !media_refs.is_empty() {
-        html.push_str("<div class=\"media\"><span class=\"marker\">redacted media hidden</span></div>");
+        html.push_str(
+            "<div class=\"media\"><span class=\"marker\">redacted media hidden</span></div>",
+        );
     }
     for media_ref in media_refs.iter().filter(|_| !event.is_redacted) {
         html.push_str("<div class=\"media\">");
@@ -265,7 +267,9 @@ mod tests {
             event_id: "$redacted".into(),
             field_path: "content.url".into(),
             mxc_uri: "mxc://server/redacted-media".into(),
-            object_hash: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into()),
+            object_hash: Some(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            ),
             encrypted_file_json: None,
         })?;
         let out = dir.path().join("html");

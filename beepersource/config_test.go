@@ -145,9 +145,9 @@ func TestAllowsBeeperChatRecordSkipsArchivedByDefault(t *testing.T) {
 
 func TestAllowsBeeperChatRecordExcludesAccountIDs(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.Beeper.ExcludeAccountIDs = []string{"sh-vcvm-matrix"}
+	cfg.Beeper.ExcludeAccountIDs = []string{"beeper-matrix-proxy"}
 
-	if cfg.AllowsBeeperChatRecord(Chat{ID: "!self:beeper", AccountID: "sh-vcvm-matrix"}) {
+	if cfg.AllowsBeeperChatRecord(Chat{ID: "!self:beeper", AccountID: "beeper-matrix-proxy"}) {
 		t.Fatal("expected self Matrix bridge account to be excluded")
 	}
 	if !cfg.AllowsBeeperChatRecord(Chat{ID: "!wa:beeper", AccountID: "whatsapp"}) {

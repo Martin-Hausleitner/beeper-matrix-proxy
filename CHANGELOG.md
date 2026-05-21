@@ -194,15 +194,15 @@ public `main` branch.
 ### Changed
 
 - Removed the GitHub Actions workflow and README CI badge so validation stays
-  local-only in the VCVM, as requested.
+  local-only against the configured Matrix test stack, as requested.
 
 ### Verified
 
 - Live Matrix/Cinny -> Beeper Signal test group E2E for text, image, edit,
   reaction, and delete.
 - Live Matrix/Cinny -> Beeper WhatsApp test group E2E for text and image.
-- Browser-verified Cinny v4.11.1 room list with the Beeper BotE2E Signal,
-  WhatsApp, and sh-vcvm Matrix rooms visible.
+- Browser-verified Cinny room list with dedicated Signal, WhatsApp, and Matrix
+  test rooms visible; exact room names and screenshots stay in private evidence.
 - Live WhatsApp test group avatar E2E: Beeper local avatar media was uploaded to
   Matrix as `m.room.avatar` and Cinny showed the room avatar state change.
 - Live Signal reply E2E in both directions: Matrix reply mapped to Beeper

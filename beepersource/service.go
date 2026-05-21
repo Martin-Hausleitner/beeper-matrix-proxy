@@ -893,8 +893,12 @@ func attachmentMessageID(msg Message, index int) string {
 	return fmt.Sprintf("%s/attachment/%d", msg.ID, index)
 }
 
+func (s *Service) matrixToBeeperDisabled() bool {
+	return s.cfg.Safety.DisableMatrixToBeeper || s.cfg.Sync.Mode == SyncModeReadOnly
+}
+
 func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound) error {
-	if s.cfg.Safety.DisableMatrixToBeeper || s.cfg.Sync.Mode == SyncModeReadOnly {
+	if s.matrixToBeeperDisabled() {
 		return ErrMatrixToBeeperDisabled
 	}
 	version := inbound.MatrixEventID
@@ -937,6 +941,9 @@ func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound
 }
 
 func (s *Service) HandleMatrixEdit(ctx context.Context, chatID, matrixTargetEventID, text string) error {
+	if s.matrixToBeeperDisabled() {
+		return ErrMatrixToBeeperDisabled
+	}
 	mapping, ok, err := s.store.MessageByMatrixEventID(ctx, matrixTargetEventID)
 	if err != nil {
 		return err
@@ -948,6 +955,9 @@ func (s *Service) HandleMatrixEdit(ctx context.Context, chatID, matrixTargetEven
 }
 
 func (s *Service) HandleMatrixRedaction(ctx context.Context, chatID, matrixTargetEventID string) error {
+	if s.matrixToBeeperDisabled() {
+		return ErrMatrixToBeeperDisabled
+	}
 	reaction, ok, err := s.store.ReactionByMatrixEventID(ctx, matrixTargetEventID)
 	if err != nil {
 		return err
@@ -969,6 +979,9 @@ func (s *Service) HandleMatrixRedaction(ctx context.Context, chatID, matrixTarge
 }
 
 func (s *Service) HandleMatrixReaction(ctx context.Context, chatID, matrixEventID, matrixTargetEventID, reactionKey string) error {
+	if s.matrixToBeeperDisabled() {
+		return ErrMatrixToBeeperDisabled
+	}
 	mapping, ok, err := s.store.MessageByMatrixEventID(ctx, matrixTargetEventID)
 	if err != nil {
 		return err

@@ -121,6 +121,6 @@ func applyBackfillHistorySafety(cfg *beepersource.Config) {
 	cfg.Sync.Mode = beepersource.SyncModeReadOnly
 	cfg.Safety.DisableMatrixToBeeper = true
 	if _, explicit := os.LookupEnv("BEEPER_MATRIX_PROXY_EXCLUDE_ACCOUNT_IDS"); !explicit {
-		cfg.Beeper.ExcludeAccountIDs = []string{"sh-vcvm-matrix"}
+		cfg.Beeper.ExcludeAccountIDs = []string{"beeper-matrix-proxy"}
 	}
 }

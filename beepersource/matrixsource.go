@@ -23,7 +23,7 @@ type MatrixClientSource struct {
 func NewMatrixClientSource(cfg Config, store *Store, accessToken string) *MatrixClientSource {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.Matrix.InsecureSkipTLS {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Local VCVM self-signed cert opt-in.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Local self-signed cert opt-in.
 	}
 	return &MatrixClientSource{
 		cfg:    cfg,

@@ -805,6 +805,71 @@ func TestMatrixToBeeperHonorsKillSwitch(t *testing.T) {
 	}
 }
 
+func TestMatrixMutationsHonorKillSwitch(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	if err := store.UpsertMessageMapping(ctx, MessageMapping{
+		BeeperMessageID: "$beeper-target",
+		MatrixEventID:   "$matrix-target:local",
+		ChatID:          "!chat:beeper",
+		Version:         "v1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertReactionMapping(ctx, ReactionMapping{
+		BeeperMessageID: "$beeper-target",
+		ReactionKey:     "🎉",
+		MatrixEventID:   "$matrix-reaction:local",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Safety.DisableMatrixToBeeper = true
+	api := &fakeBeeperAPI{}
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
+
+	mutations := []struct {
+		name string
+		call func() error
+	}{
+		{
+			name: "edit",
+			call: func() error {
+				return svc.HandleMatrixEdit(ctx, "!chat:beeper", "$matrix-target:local", "blocked")
+			},
+		},
+		{
+			name: "redaction",
+			call: func() error {
+				return svc.HandleMatrixRedaction(ctx, "!chat:beeper", "$matrix-target:local")
+			},
+		},
+		{
+			name: "reaction redaction",
+			call: func() error {
+				return svc.HandleMatrixRedaction(ctx, "!chat:beeper", "$matrix-reaction:local")
+			},
+		},
+		{
+			name: "reaction",
+			call: func() error {
+				return svc.HandleMatrixReaction(ctx, "!chat:beeper", "$new-reaction:local", "$matrix-target:local", "👍")
+			},
+		},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			if err := mutation.call(); err != ErrMatrixToBeeperDisabled {
+				t.Fatalf("expected kill switch error, got %v", err)
+			}
+		})
+	}
+	if len(api.updates) != 0 || len(api.deletes) != 0 || len(api.reactions) != 0 {
+		t.Fatalf("expected no Beeper mutation calls, updates=%#v deletes=%#v reactions=%#v", api.updates, api.deletes, api.reactions)
+	}
+}
+
 func TestMatrixToBeeperUsesDeterministicEchoKey(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)

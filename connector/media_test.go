@@ -292,8 +292,8 @@ func TestNormalizeMediaContentForBeeperRecursesIntoEditsAndGallery(t *testing.T)
 
 func TestNormalizeVoiceInfoKeepsExistingWaveformAndDuration(t *testing.T) {
 	content := &event.MessageEventContent{
-		MsgType: event.MsgAudio,
-		Info:    &event.FileInfo{MimeType: "audio/ogg", Duration: 9999},
+		MsgType:      event.MsgAudio,
+		Info:         &event.FileInfo{MimeType: "audio/ogg", Duration: 9999},
 		MSC3245Voice: &event.MSC3245Voice{},
 		MSC1767Audio: &event.MSC1767Audio{
 			Duration: 321,

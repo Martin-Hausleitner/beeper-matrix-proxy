@@ -115,7 +115,7 @@ Current `beeper-source` implementation status:
 | Beeper -> Matrix text mirror core | Supported | `cmd/beeper-source` can create Matrix rooms and mirror Beeper text messages into them. |
 | Matrix -> Beeper text/media core | Supported | Matrix `/sync` reader forwards user text and Matrix media from portal rooms to Beeper with stored sync tokens. |
 | Matrix -> Beeper edits/deletes/reactions | Supported | Live-tested in the Signal test group through Beeper Desktop API update/delete/reaction endpoints. |
-| Cinny visibility | Supported | Verified in Cinny v4.11.1: WhatsApp, Signal, and sh-vcvm test rooms appear as Matrix rooms. |
+| Cinny visibility | Supported | Verified in Cinny v4.11.1: WhatsApp, Signal, and Matrix test rooms appear as Matrix rooms. |
 | Beeper chat avatars -> Matrix room icons | Supported | Beeper `imgURL`/asset avatars are uploaded to Matrix and refreshed on existing portal rooms. |
 | All active Beeper chats in Matrix/Cinny | Supported | `cmd/beeper-source -rooms-only` creates/updates portal rooms for every non-archived Beeper chat without importing history or sending to contacts. Archived chats can be opted in. |
 | Platform names/icons | Supported | Rooms-only mode groups rooms into Matrix Spaces per Beeper `network` (`WhatsApp`, `Signal`, `Telegram`, etc.); generated platform PNG logos are cached once per service for the service spaces and as a room-avatar fallback when a chat has no Beeper `imgURL`. |
@@ -124,27 +124,19 @@ Current `beeper-source` implementation status:
 | Media policy | Partial | Matrix -> Beeper multipart upload works; oversized-media fallback exists. Full streaming for very large files is still future work. |
 | Deeper enrichment | Partial | Platform detection implemented; contact merging and analytics reports are later. |
 
-Latest local E2E evidence from 2026-05-21:
+Local E2E evidence policy:
 
 | Path | Test group | Result |
 |---|---|---|
 | All-chat rooms-only import | Local Synapse + Cinny | Beeper discovery/import is paginated, resumable, and idempotent. Local evidence should be kept outside the public repo because it can contain room names, user IDs, and screenshots. |
-| Rooms-only backpressure/retry | VCVM Synapse | Final idempotency pass completed after accessibility checks in `150.89s`; previous bulk run created 620 new rooms in `439.70s`, resumed in `5.36s`, and recreated stale active portals in `11.20s`. |
+| Rooms-only backpressure/retry | Local Synapse | Verified locally with resumable room creation, adaptive retry/backpressure, and an idempotency pass. Keep exact room counts and timings in private run logs. |
 | Matrix Spaces by service | Local Synapse + Cinny | Rooms are linked under messenger-service spaces when spaces are enabled. Verify locally with `/state/m.space.child` and Cinny screenshots kept outside the public repo. |
-| Messenger logo avatars | VCVM Synapse + Cinny | Platform avatar cache now uses `platform-logo-v3:*` PNG media. WhatsApp/Signal/Telegram/bridgev2/Beeper(Matrix) service spaces all expose `m.room.avatar` with `image/png`; the WhatsApp PNG was downloaded and verified with a PNG signature. |
-| Matrix/Cinny -> Beeper text | Signal | Message `165648` created from Matrix event `$6B7BFH1w4X_kgCuD9_4T5Ad9TAvAoLmuHWQkSsbBKZA`. |
-| Matrix/Cinny -> Beeper edit | Signal | Same message updated to `edited-ok` and exposed `editedTimestamp`. |
-| Matrix/Cinny -> Beeper reaction | Signal | Matrix reaction became Beeper reaction `🎉`. |
-| Matrix/Cinny -> Beeper delete | Signal | Same message became `isDeleted: true` through Beeper API. |
-| Matrix/Cinny -> Beeper image | Signal | PNG uploaded as Beeper `IMAGE` with `image/png` metadata. |
-| Matrix/Cinny -> Beeper text + image | WhatsApp | Text `165911` and image `165912` arrived with filename, MIME type, and dimensions. |
-| Cinny room list | VCVM Synapse | Browser-verified rooms: `Beeper BotE2E:[signal] Test`, `Beeper BotE2E:[whatsapp] Test`, `Beeper BotE2E:[sh-vcvm-matrix] Test`, plus the non-bot test rooms. |
-| Beeper chat avatar -> Matrix room icon | WhatsApp | Live WhatsApp test room received `m.room.avatar` with an `mxc://` JPEG and Cinny showed `changed room avatar`. |
-| Matrix reply -> Beeper reply | Signal | Matrix `m.in_reply_to` was remapped to Beeper `linkedMessageID` (`166168 -> 166067`). |
-| Beeper reply -> Matrix reply | Signal | Beeper `replyToMessageID` was remapped to Matrix `m.in_reply_to` (`166220 -> $hbWt...`). |
-| Matrix/Cinny -> Beeper file, GIF, audio | Signal + WhatsApp | File, `image/gif` with `isGif:true`, and `audio/wav` arrived in both test groups. |
-| Beeper -> Matrix file, GIF, audio | Signal + WhatsApp | File, GIF, and audio arrived as `m.file`, `m.image` with `fi.mau.gif:true`, and `m.audio`. |
-| One-run echo mapping | Signal | Matrix -> Beeper message `166233` mapped back to the original Matrix event in one proxy run. |
+| Messenger logo avatars | Local Synapse + Cinny | Platform avatar cache uses generated PNG media for service spaces and room-avatar fallback. Verify exact MXC URIs and screenshots in private run logs. |
+| Matrix/Cinny -> Beeper text, edit, reaction, delete | Dedicated test groups only | Verified with non-contact test rooms. Exact Beeper message IDs and Matrix event IDs must stay out of public docs. |
+| Matrix/Cinny -> Beeper image/file/GIF/audio | Dedicated test groups only | Verified with local test payloads in WhatsApp/Signal-style test rooms. Exact remote identifiers must stay out of public docs. |
+| Beeper -> Matrix reply/media/audio/GIF | Dedicated test groups only | Verified as Matrix events with relation metadata and media msgtypes. Exact event IDs and room names must stay out of public docs. |
+| Cinny room list and avatars | Local Synapse + Cinny | Verify structurally in Cinny; keep screenshots and room names in private evidence folders. |
+| One-run echo mapping | Dedicated test groups only | Matrix-originated messages are mapped to returned Beeper IDs immediately so edit/delete/reaction mutations can target the same message in one proxy run. |
 
 ### Show Beeper Bridges In Cinny
 
@@ -204,7 +196,7 @@ backfill:
 ```bash
 export BEEPER_MATRIX_PROXY_SYNC_MODE=read_only
 export BEEPER_MATRIX_PROXY_DISABLE_MATRIX_TO_BEEPER=true
-export BEEPER_MATRIX_PROXY_EXCLUDE_ACCOUNT_IDS=sh-vcvm-matrix
+export BEEPER_MATRIX_PROXY_EXCLUDE_ACCOUNT_IDS=beeper-matrix-proxy
 
 go run ./cmd/beeper-source -db beeper-source-all-chats.db -once -backfill-history -history-chat-limit 20
 ```
@@ -234,7 +226,7 @@ export MATRIX_ACCESS_TOKEN="..."
 export BEEPER_MATRIX_PROXY_MATRIX_HOMESERVER_URL="https://matrix.example.local"
 export BEEPER_MATRIX_PROXY_MATRIX_USER_ID="@beeper_source:example.local"
 export BEEPER_MATRIX_PROXY_MATRIX_INVITE_USER_ID="@cinny_test:example.local"
-export BEEPER_MATRIX_PROXY_MATRIX_INSECURE_TLS=true # only for the local VCVM self-signed cert
+export BEEPER_MATRIX_PROXY_MATRIX_INSECURE_TLS=true # only for a local self-signed cert
 
 go run ./cmd/beeper-source -db beeper-source.db -once
 ```
@@ -357,9 +349,9 @@ Legend:
 | Text messages | Supported | Matrix -> Beeper, Beeper -> Matrix | Live smoke test | Plain `m.room.message` events round-trip. |
 | Burst delivery | Supported | Matrix -> Beeper | Real Synapse E2E | Remote sync timeline limit is raised to avoid losing fast messages. |
 | Room discovery | Supported | Matrix -> Beeper | Live smoke test | Joined remote Matrix rooms are synced as Beeper portal rooms. |
-| All active Beeper chat discovery | Supported | Beeper -> Matrix | Live VCVM rooms-only import | The Beeper source mode auto-pages `/v1/chats` and can create Cinny-visible rooms for all non-archived Beeper chats. |
+| All active Beeper chat discovery | Supported | Beeper -> Matrix | Local rooms-only import | The Beeper source mode auto-pages `/v1/chats` and can create Cinny-visible rooms for all non-archived Beeper chats. |
 | Room name/topic/avatar | Supported | Matrix -> Beeper | Real Synapse E2E | Uses Matrix room state during chat sync. |
-| Platform labels/icons | Supported | Beeper -> Matrix | Unit tests + live rooms-only import | Uses Beeper `network` names for Matrix Spaces and generated PNG platform logo avatars for WhatsApp/Signal/Telegram/etc.; live VCVM import has cached `platform-logo-v3:*` icons. Portal rooms prefer Beeper chat avatars unless `BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS=true` is set. |
+| Platform labels/icons | Supported | Beeper -> Matrix | Unit tests + local rooms-only import | Uses Beeper `network` names for Matrix Spaces and generated PNG platform logo avatars for WhatsApp/Signal/Telegram/etc.; local import has cached `platform-logo-v3:*` icons. Portal rooms prefer Beeper chat avatars unless `BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS=true` is set. |
 | Replies | Supported | Both | Regression test + live Signal test group E2E | Beeper-local event IDs are rewritten to Matrix IDs, and Matrix reply IDs are rewritten to Beeper message IDs. |
 | Threads | Partial | Both | Regression test + real Synapse relation E2E | Thread root IDs are rewritten; deeper Beeper UI behavior needs more testing. |
 | Reactions | Supported | Both | Regression test + live Signal test group E2E | Matrix reactions are mapped through Beeper's reaction API; restart-safe remove paths are covered by tests. |
@@ -448,7 +440,7 @@ Optional environment variables:
 | `BEEPER_MATRIX_PROXY_DIRECT_MEDIA_TTL` | `24h` | Lifetime for generated direct media IDs, using Go duration syntax such as `6h` or `30m`. |
 | `BEEPER_MATRIX_PROXY_DIR` | current directory | Directory used by `run-bridge.sh`. |
 | `BEEPER_MATRIX_PROXY_BINARY` | `./beeper-matrix-proxy` | Binary used by `run-bridge.sh`. |
-| `BEEPER_BRIDGE_NAME` | `sh-vcvm-matrix` | Bridge registration name passed to `bbctl run`. The default preserves the existing local test registration; set it to `beeper-matrix-proxy` for a fresh public-name registration. |
+| `BEEPER_BRIDGE_NAME` | `beeper-matrix-proxy` | Bridge registration name passed to `bbctl run`. Override it in `.env` when reusing an existing local registration. |
 | `BEEPER_MATRIX_PROXY_AUTOBUILD` | `1` | Build the binary automatically before `bbctl run` when it is missing. |
 | `BEEPER_BBCTL` | `bbctl` | `bbctl` binary path. |
 
@@ -495,7 +487,7 @@ homeserver username/password.
 
 ### Quality Gates
 
-All validation is expected to run locally in the VCVM. This repository currently
+All validation is expected to run locally against your Matrix test stack. This repository currently
 does not ship GitHub Actions workflows, so pushes do not trigger GitHub-hosted
 runs.
 

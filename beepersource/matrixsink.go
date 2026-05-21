@@ -61,7 +61,7 @@ func NewMatrixClientSink(cfg Config, store *Store, accessToken string) (*MatrixC
 	if cfg.Matrix.InsecureSkipTLS {
 		cli.Client = &http.Client{
 			Timeout:   30 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // Local VCVM self-signed cert opt-in.
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // Local self-signed cert opt-in.
 		}
 	} else {
 		cli.Client = &http.Client{Timeout: 30 * time.Second}
