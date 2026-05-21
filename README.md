@@ -51,7 +51,7 @@ cd matrix-archive-sync
 export MATRIX_HOMESERVER_URL="https://vcvm.tail6a40cd.ts.net:3443"
 export MATRIX_ACCESS_TOKEN="..."
 
-cargo run -- --archive-dir ../matrix-archive sync --download-media --passes 1
+cargo run -- --archive-dir ../matrix-archive sync --download-media --refresh-room-state --passes 1
 cargo run -- --archive-dir ../matrix-archive backfill --download-media --room-limit 4
 cargo run -- --archive-dir ../matrix-archive export-html --output-dir ../matrix-archive/html
 cargo run -- --archive-dir ../matrix-archive export-jsonl --output ../matrix-archive/events.jsonl
@@ -61,6 +61,24 @@ restic backup ../matrix-archive/snapshot ../matrix-archive/objects
 
 The v1 restore target is a readable/searchable offline archive, not replaying
 original Matrix event IDs or historical signatures into old rooms.
+
+Latest local archive evidence from 2026-05-22:
+
+| Check | Result |
+|---|---:|
+| Matrix rooms in archive | 864 |
+| Rooms with refreshed names | 864 |
+| Rooms with Matrix avatar state | 831 |
+| Matrix events archived | 28,940 |
+| Media references | 2,732 |
+| Downloaded media objects | 1,032 |
+| Media refs missing an object | 0 |
+| Explicit gaps | 328 limited timelines |
+| Archive size in OneDrive | 349 MB |
+
+`sync --refresh-room-state` fetches `/joined_rooms` and each room's current
+`/state`, so room names, service spaces, and `m.room.avatar` state are backed up
+even when an incremental `/sync` response omits old state events.
 
 ## Beeper Source Mode
 
@@ -207,6 +225,8 @@ name/avatar settings, you can set `BEEPER_MATRIX_PROXY_PORTAL_CHECK_ACCESS=false
 and `BEEPER_MATRIX_PROXY_MATRIX_SPACES=false`. That skips stale-room probing and
 space relinking while still running in `read_only` mode and refreshing existing
 portal room names, topics, and avatars.
+Set `BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC=true` for a one-shot repair
+run that rewrites avatar state even when the local sync value already matches.
 
 ```bash
 export BEEPER_ACCESS_TOKEN="..."

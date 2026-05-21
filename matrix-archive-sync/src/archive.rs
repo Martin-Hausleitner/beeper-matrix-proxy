@@ -41,6 +41,9 @@ impl Archiver {
             if let Some(next_batch) = response.get("next_batch").and_then(Value::as_str) {
                 self.store.set_state("sync_next_batch", next_batch)?;
             }
+            if args.refresh_room_state {
+                self.refresh_joined_room_state(args.download_media).await?;
+            }
             passes += 1;
             if !args.follow && passes >= args.passes {
                 return Ok(());
@@ -83,6 +86,21 @@ impl Archiver {
                     }
                 }
                 batches += 1;
+            }
+        }
+        Ok(())
+    }
+
+    async fn refresh_joined_room_state(&self, download_media: bool) -> Result<()> {
+        let rooms = self.client.joined_rooms().await?;
+        for room_id in rooms {
+            let response = self.client.room_state(&room_id).await?;
+            let state_events = response.as_array().cloned().unwrap_or_default();
+            let room_record = room_record_from_state(&room_id, &state_events, None);
+            self.store.upsert_room(&room_record)?;
+            for event in state_events {
+                self.ingest_event(&room_id, &event, "room_state", download_media)
+                    .await?;
             }
         }
         Ok(())
@@ -193,6 +211,11 @@ impl Archiver {
         };
         let record = event_record_from_json(room_id, event, source_batch);
         self.store.insert_event(&record)?;
+        if record.event_type == "m.room.redaction" {
+            if let Some(target_event_id) = record.redacts_event_id.as_deref() {
+                self.store.apply_redaction(target_event_id)?;
+            }
+        }
 
         let media_refs = extract_mxc_references(event);
         for media_ref in media_refs {
@@ -282,7 +305,7 @@ fn room_record_from_state(
         joined_at: Some(Utc::now().timestamp()),
         last_prev_batch: prev_batch.map(str::to_owned),
         backfill_token: prev_batch.map(str::to_owned),
-        backfill_done: prev_batch.is_none(),
+        backfill_done: false,
     }
 }
 
@@ -390,5 +413,13 @@ mod tests {
         let room = room_record_from_state("!room:local", &state, Some("prev"));
         assert_eq!(room.name.as_deref(), Some("Archive Me"));
         assert_eq!(room.backfill_token.as_deref(), Some("prev"));
+        assert!(!room.backfill_done);
+    }
+
+    #[test]
+    fn sync_room_record_without_prev_batch_does_not_complete_backfill() {
+        let room = room_record_from_state("!room:local", &[], None);
+        assert_eq!(room.backfill_token, None);
+        assert!(!room.backfill_done);
     }
 }

@@ -200,7 +200,7 @@ impl ArchiveStore {
                 joined_at=COALESCE(rooms.joined_at, excluded.joined_at),
                 last_prev_batch=COALESCE(excluded.last_prev_batch, rooms.last_prev_batch),
                 backfill_token=COALESCE(excluded.backfill_token, rooms.backfill_token),
-                backfill_done=CASE WHEN excluded.backfill_done=1 THEN 1 ELSE rooms.backfill_done END
+                backfill_done=rooms.backfill_done
             "#,
             params![
                 room.room_id,
@@ -329,6 +329,30 @@ impl ArchiveStore {
                 ],
             )?;
         }
+        let has_redaction: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM events WHERE type='m.room.redaction' AND redacts_event_id=? LIMIT 1)",
+            [event.event_id.as_str()],
+            |row| row.get::<_, i64>(0).map(|value| value != 0),
+        )?;
+        if has_redaction && !event.is_redacted {
+            self.apply_redaction(&event.event_id)?;
+        }
+        Ok(())
+    }
+
+    pub fn apply_redaction(&self, target_event_id: &str) -> Result<()> {
+        self.conn.execute(
+            r#"
+            UPDATE events
+            SET is_redacted=1,
+                body_text=NULL,
+                formatted_body_html=NULL
+            WHERE event_id=?
+            "#,
+            [target_event_id],
+        )?;
+        self.conn
+            .execute("DELETE FROM event_fts WHERE event_id=?", [target_event_id])?;
         Ok(())
     }
 
@@ -582,6 +606,76 @@ mod tests {
         let events = store.all_events()?;
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].raw_event, raw);
+        Ok(())
+    }
+
+    #[test]
+    fn sync_upsert_does_not_mark_existing_room_backfill_complete() -> Result<()> {
+        let dir = tempdir()?;
+        let store = ArchiveStore::open(dir.path())?;
+        store.upsert_room(&RoomRecord {
+            room_id: "!room:local".into(),
+            name: Some("Room".into()),
+            canonical_alias: None,
+            avatar_mxc: None,
+            joined_at: Some(1),
+            last_prev_batch: Some("prev".into()),
+            backfill_token: Some("prev".into()),
+            backfill_done: false,
+        })?;
+
+        store.upsert_room(&RoomRecord {
+            room_id: "!room:local".into(),
+            name: Some("Room renamed".into()),
+            canonical_alias: None,
+            avatar_mxc: None,
+            joined_at: Some(2),
+            last_prev_batch: None,
+            backfill_token: None,
+            backfill_done: true,
+        })?;
+
+        let rooms = store.rooms_for_backfill(10)?;
+        assert_eq!(rooms.len(), 1);
+        assert_eq!(rooms[0].room_id, "!room:local");
+        assert_eq!(rooms[0].backfill_token.as_deref(), Some("prev"));
+        assert!(!rooms[0].backfill_done);
+        Ok(())
+    }
+
+    #[test]
+    fn redaction_marks_target_event_deleted_and_unsearchable() -> Result<()> {
+        let dir = tempdir()?;
+        let store = ArchiveStore::open(dir.path())?;
+        let event = EventRecord {
+            event_id: "$target".into(),
+            room_id: "!room:local".into(),
+            origin_server_ts: Some(1),
+            sender: Some("@a:local".into()),
+            event_type: "m.room.message".into(),
+            state_key: None,
+            msgtype: Some("m.text".into()),
+            relates_to_event_id: None,
+            relation_type: None,
+            redacts_event_id: None,
+            is_encrypted: false,
+            is_redacted: false,
+            body_text: Some("secret body".into()),
+            formatted_body_html: Some("<b>secret body</b>".into()),
+            raw_event: serde_json::json!({"event_id":"$target","type":"m.room.message","content":{"body":"secret body"}}),
+            decrypted_event: None,
+            canonical_sha256: "hash".into(),
+            received_at: 2,
+            source_batch: "sync".into(),
+        };
+        store.insert_event(&event)?;
+        store.apply_redaction("$target")?;
+
+        let events = store.all_events()?;
+        assert_eq!(events.len(), 1);
+        assert!(events[0].is_redacted);
+        assert!(events[0].body_text.is_none());
+        assert!(events[0].formatted_body_html.is_none());
         Ok(())
     }
 }

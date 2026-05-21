@@ -19,6 +19,22 @@ public `main` branch.
 - Beeper/BIPA history mirroring now stores raw Desktop API message JSON locally
   and mirrors every attachment in a multi-attachment message as its own Matrix
   media event instead of only preserving the first file.
+- `matrix-archive-sync sync --refresh-room-state` now refreshes joined-room
+  state through `/joined_rooms` and `/rooms/{roomId}/state`, so names, service
+  spaces, and `m.room.avatar` state are persisted even when incremental `/sync`
+  does not include historical state.
+- Beeper-side edits are now mirrored to Matrix as `m.replace` events, and
+  Beeper-side deletes redact the original Matrix event instead of only updating
+  the local mapping version.
+- Matrix archive redaction ingest now marks the target event redacted and
+  removes its old body from FTS/HTML rendering while preserving raw event blobs.
+- Matrix message events emitted by `beeper-source` include
+  `com.openclaw.beeper.source` metadata with source chat/message/account and
+  attachment identifiers; the full raw Beeper sidecar DB is included in the
+  archive snapshot for lossless local backup.
+- `BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC=true` forces a one-shot room
+  avatar state rewrite for existing Beeper portal rooms; avatar fetch failures
+  fall back to generated platform logos instead of aborting portal reconcile.
 - `cmd/beeper-source`, an executable reconcile loop that reads Beeper Desktop
   API chats and mirrors them into Matrix rooms.
 - Matrix client sink for `beeper-source` with room creation, deterministic

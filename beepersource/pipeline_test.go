@@ -505,6 +505,41 @@ func TestReconcileCanPreferPlatformAvatarsOverChatAvatars(t *testing.T) {
 	}
 }
 
+func TestReconcileCanForceAvatarRefreshWhenSyncValueMatches(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{
+		ID:        "!chat:beeper",
+		AccountID: "signal",
+		Network:   "Signal",
+		Name:      "Force Avatar",
+		AvatarURL: "localmxc://same-avatar",
+	}
+	if err := store.UpsertPortal(ctx, chat, "!existing:local", "cursor"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetValue(ctx, portalAvatarSyncKey(chat.ID), "localmxc://same-avatar"); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeBeeperAPI{
+		chats:    []Chat{chat},
+		messages: map[string][]Message{"!chat:beeper": nil},
+		assets:   map[string]string{"localmxc://same-avatar": "avatar"},
+	}
+	matrix := &fakeMatrixSink{}
+	cfg := DefaultConfig()
+	cfg.Matrix.ForceAvatarSync = true
+	svc := NewService(cfg, store, api, matrix)
+
+	if err := svc.ReconcilePortalsOnly(ctx); err != nil {
+		t.Fatalf("ReconcilePortalsOnly returned error: %v", err)
+	}
+	if len(matrix.avatars) != 1 {
+		t.Fatalf("expected forced avatar refresh, got %d avatars", len(matrix.avatars))
+	}
+}
+
 func TestReconcilePortalsOnlySkipsArchivedChatsByDefault(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
@@ -914,6 +949,113 @@ func TestReconcilePreservesMatrixOriginMappingWhenEchoVersionChanges(t *testing.
 	}
 }
 
+func TestReconcileMirrorsBeeperEditAsMatrixReplacement(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	editTime := time.Unix(200, 0).UTC()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{ID: "!chat:beeper", AccountID: "signal", Name: "Edited"}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:              "$beeper-edit",
+				AccountID:       "signal",
+				ChatID:          "!chat:beeper",
+				SenderID:        "@alice:signal",
+				SenderName:      "Alice",
+				Type:            MessageTypeText,
+				Text:            "after edit",
+				Timestamp:       time.Unix(100, 0).UTC(),
+				EditedTimestamp: &editTime,
+			}},
+		},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+	if err := store.UpsertMessageMapping(ctx, MessageMapping{
+		BeeperMessageID: "$beeper-edit",
+		MatrixEventID:   "$matrix-original:local",
+		ChatID:          "!chat:beeper",
+		Version:         "old",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(matrix.edits) != 1 {
+		t.Fatalf("expected one Matrix edit, got %#v", matrix.edits)
+	}
+	if matrix.edits[0].targetEventID != "$matrix-original:local" || matrix.edits[0].outbound.Body != "after edit" {
+		t.Fatalf("unexpected edit %#v", matrix.edits[0])
+	}
+	mapping, ok, err := store.MessageByBeeperID(ctx, "$beeper-edit")
+	if err != nil || !ok {
+		t.Fatalf("expected mapping, ok=%v err=%v", ok, err)
+	}
+	if mapping.MatrixEventID != "$matrix-original:local" {
+		t.Fatalf("expected edit to keep original mapping, got %q", mapping.MatrixEventID)
+	}
+	if mapping.Version == "old" {
+		t.Fatal("expected version update after edit")
+	}
+}
+
+func TestReconcileMirrorsBeeperDeleteAsMatrixRedaction(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	editTime := time.Unix(200, 0).UTC()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{ID: "!chat:beeper", AccountID: "whatsapp", Name: "Deleted"}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:              "$beeper-delete",
+				AccountID:       "whatsapp",
+				ChatID:          "!chat:beeper",
+				SenderID:        "@bob:whatsapp",
+				SenderName:      "Bob",
+				Type:            MessageTypeText,
+				Text:            "before delete",
+				Timestamp:       time.Unix(100, 0).UTC(),
+				EditedTimestamp: &editTime,
+				IsDeleted:       true,
+			}},
+		},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+	if err := store.UpsertMessageMapping(ctx, MessageMapping{
+		BeeperMessageID: "$beeper-delete",
+		MatrixEventID:   "$matrix-delete:local",
+		ChatID:          "!chat:beeper",
+		Version:         editTime.Format("20060102T150405.000000000Z"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(matrix.redactions) != 1 {
+		t.Fatalf("expected one Matrix redaction, got %#v", matrix.redactions)
+	}
+	if matrix.redactions[0].eventID != "$matrix-delete:local" {
+		t.Fatalf("unexpected redaction %#v", matrix.redactions[0])
+	}
+	mapping, ok, err := store.MessageByBeeperID(ctx, "$beeper-delete")
+	if err != nil || !ok {
+		t.Fatalf("expected mapping, ok=%v err=%v", ok, err)
+	}
+	if mapping.DeletedAt == nil {
+		t.Fatal("expected mapping to be marked deleted")
+	}
+	if mapping.Version != "deleted" {
+		t.Fatalf("expected deletion version to win over edit timestamp, got %q", mapping.Version)
+	}
+}
+
 func ptrTime(t time.Time) *time.Time { return &t }
 
 type fakeBeeperAPI struct {
@@ -985,6 +1127,8 @@ func (f *fakeBeeperAPI) RemoveReaction(ctx context.Context, chatID, messageID, r
 type fakeMatrixSink struct {
 	mu                  sync.Mutex
 	events              []MatrixOutbound
+	edits               []fakeMatrixEdit
+	redactions          []fakeMatrixRedaction
 	failMedia           bool
 	failPortals         map[string]error
 	failPortalSequences map[string][]error
@@ -993,6 +1137,18 @@ type fakeMatrixSink struct {
 	portalAttempts      map[string]int
 	avatars             []*MatrixMedia
 	spaceChats          []Chat
+}
+
+type fakeMatrixEdit struct {
+	outbound      MatrixOutbound
+	targetEventID string
+}
+
+type fakeMatrixRedaction struct {
+	roomID  string
+	eventID string
+	txnID   string
+	reason  string
 }
 
 func (f *fakeMatrixSink) EnsurePortal(ctx context.Context, chat Chat, avatar *MatrixMedia) (string, error) {
@@ -1043,4 +1199,18 @@ func (f *fakeMatrixSink) SendMessage(ctx context.Context, outbound MatrixOutboun
 		return "", errors.New("HTTP 413")
 	}
 	return "$event-" + outbound.MessageID + ":local", nil
+}
+
+func (f *fakeMatrixSink) EditMessage(ctx context.Context, outbound MatrixOutbound, targetEventID string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.edits = append(f.edits, fakeMatrixEdit{outbound: outbound, targetEventID: targetEventID})
+	return "$edit-" + outbound.MessageID + ":local", nil
+}
+
+func (f *fakeMatrixSink) RedactMessage(ctx context.Context, roomID string, eventID string, txnID string, reason string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.redactions = append(f.redactions, fakeMatrixRedaction{roomID: roomID, eventID: eventID, txnID: txnID, reason: reason})
+	return "$redact-" + eventID + ":local", nil
 }

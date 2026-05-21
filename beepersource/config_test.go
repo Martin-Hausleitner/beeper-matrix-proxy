@@ -50,6 +50,16 @@ func TestConfigCanPreferPlatformAvatars(t *testing.T) {
 	}
 }
 
+func TestConfigCanForceAvatarSync(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC", "true")
+
+	cfg := DefaultConfig()
+
+	if !cfg.Matrix.ForceAvatarSync {
+		t.Fatal("expected avatar refresh to be enabled from env")
+	}
+}
+
 func TestConfigCanEnableMatrixSpaces(t *testing.T) {
 	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_SPACES", "true")
 

@@ -56,6 +56,9 @@ pub struct SyncArgs {
     pub download_media: bool,
 
     #[arg(long, default_value_t = false)]
+    pub refresh_room_state: bool,
+
+    #[arg(long, default_value_t = false)]
     pub insecure_tls: bool,
 }
 

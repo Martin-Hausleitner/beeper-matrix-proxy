@@ -64,6 +64,28 @@ impl MatrixClient {
         self.get_json(&url).await
     }
 
+    pub async fn joined_rooms(&self) -> Result<Vec<String>> {
+        let url = format!("{}/_matrix/client/v3/joined_rooms", self.homeserver);
+        let response = self.get_json(&url).await?;
+        Ok(response
+            .get("joined_rooms")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(ToOwned::to_owned)
+            .collect())
+    }
+
+    pub async fn room_state(&self, room_id: &str) -> Result<Value> {
+        let url = format!(
+            "{}/_matrix/client/v3/rooms/{}/state",
+            self.homeserver,
+            urlencoding::encode(room_id)
+        );
+        self.get_json(&url).await
+    }
+
     pub async fn download_media(&self, mxc_uri: &str) -> Result<DownloadedMedia> {
         let (server_name, media_id) = parse_mxc(mxc_uri)?;
         let url = format!(

@@ -489,7 +489,60 @@ func (m *MatrixClientSink) EnsurePuppet(ctx context.Context, sender Sender) (str
 }
 
 func (m *MatrixClientSink) SendMessage(ctx context.Context, outbound MatrixOutbound) (string, error) {
-	content := event.MessageEventContent{
+	content, err := m.messageContent(ctx, outbound)
+	if err != nil {
+		return "", err
+	}
+	req := mautrix.ReqSendEvent{TransactionID: outbound.TransactionID}
+	if !outbound.Timestamp.IsZero() {
+		req.Timestamp = outbound.Timestamp.UnixMilli()
+	}
+	resp, err := m.client.SendMessageEvent(ctx, id.RoomID(outbound.RoomID), event.EventMessage, contentPayload(content, outbound), req)
+	if err != nil {
+		return "", err
+	}
+	return resp.EventID.String(), nil
+}
+
+func (m *MatrixClientSink) EditMessage(ctx context.Context, outbound MatrixOutbound, targetEventID string) (string, error) {
+	newContent, err := m.messageContent(ctx, outbound)
+	if err != nil {
+		return "", err
+	}
+	editContent := *newContent
+	editContent.NewContent = newContent
+	editContent.RelatesTo = &event.RelatesTo{
+		Type:    event.RelReplace,
+		EventID: id.EventID(targetEventID),
+	}
+	editContent.Body = "* " + newContent.Body
+	if newContent.FormattedBody != "" {
+		editContent.FormattedBody = "* " + newContent.FormattedBody
+	}
+	req := mautrix.ReqSendEvent{TransactionID: outbound.TransactionID}
+	if !outbound.Timestamp.IsZero() {
+		req.Timestamp = outbound.Timestamp.UnixMilli()
+	}
+	resp, err := m.client.SendMessageEvent(ctx, id.RoomID(outbound.RoomID), event.EventMessage, contentPayload(&editContent, outbound), req)
+	if err != nil {
+		return "", err
+	}
+	return resp.EventID.String(), nil
+}
+
+func (m *MatrixClientSink) RedactMessage(ctx context.Context, roomID string, eventID string, txnID string, reason string) (string, error) {
+	resp, err := m.client.RedactEvent(ctx, id.RoomID(roomID), id.EventID(eventID), mautrix.ReqRedact{
+		Reason: reason,
+		TxnID:  txnID,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.EventID.String(), nil
+}
+
+func (m *MatrixClientSink) messageContent(ctx context.Context, outbound MatrixOutbound) (*event.MessageEventContent, error) {
+	content := &event.MessageEventContent{
 		MsgType: event.MessageType(outbound.MsgType),
 		Body:    outbound.Body,
 		BeeperPerMessageProfile: &event.BeeperPerMessageProfile{
@@ -506,7 +559,7 @@ func (m *MatrixClientSink) SendMessage(ctx context.Context, outbound MatrixOutbo
 			FileName:      outbound.Media.FileName,
 		})
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		content.URL = upload.ContentURI.CUString()
 		content.FileName = outbound.Media.FileName
@@ -537,15 +590,52 @@ func (m *MatrixClientSink) SendMessage(ctx context.Context, outbound MatrixOutbo
 			content.FormattedBody = "<strong>" + html.EscapeString(outbound.SenderName) + "</strong>: " + outbound.HTML
 		}
 	}
-	req := mautrix.ReqSendEvent{TransactionID: outbound.TransactionID}
-	if !outbound.Timestamp.IsZero() {
-		req.Timestamp = outbound.Timestamp.UnixMilli()
-	}
-	resp, err := m.client.SendMessageEvent(ctx, id.RoomID(outbound.RoomID), event.EventMessage, &content, req)
+	return content, nil
+}
+
+func contentPayload(content *event.MessageEventContent, outbound MatrixOutbound) map[string]any {
+	data, err := json.Marshal(content)
 	if err != nil {
-		return "", err
+		return map[string]any{
+			"msgtype": string(content.MsgType),
+			"body":    content.Body,
+		}
 	}
-	return resp.EventID.String(), nil
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return map[string]any{
+			"msgtype": string(content.MsgType),
+			"body":    content.Body,
+		}
+	}
+	source := map[string]any{
+		"message_id": outbound.MessageID,
+		"chat_id":    outbound.ChatID,
+		"account_id": outbound.AccountID,
+	}
+	if outbound.SortKey != "" {
+		source["sort_key"] = outbound.SortKey
+	}
+	if outbound.IsHidden {
+		source["is_hidden"] = outbound.IsHidden
+	}
+	if outbound.IsSender {
+		source["is_sender"] = outbound.IsSender
+	}
+	if outbound.IsUnread {
+		source["is_unread"] = outbound.IsUnread
+	}
+	if len(outbound.Mentions) > 0 {
+		source["mentions"] = outbound.Mentions
+	}
+	if outbound.AttachmentID != "" {
+		source["attachment_id"] = outbound.AttachmentID
+	}
+	if outbound.AttachmentIdx > 0 {
+		source["attachment_index"] = outbound.AttachmentIdx
+	}
+	payload["com.openclaw.beeper.source"] = source
+	return payload
 }
 
 func roomDisplayName(cfg Config, chat Chat) string {

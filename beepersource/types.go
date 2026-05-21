@@ -91,15 +91,24 @@ type MessagePage struct {
 type MatrixOutbound struct {
 	RoomID        string
 	MessageID     string
+	AccountID     string
+	ChatID        string
 	SenderID      string
 	SenderName    string
 	SenderMXID    string
+	SortKey       string
 	Body          string
 	HTML          string
 	MsgType       string
 	Timestamp     time.Time
 	ReplyToEvent  string
 	TransactionID string
+	IsHidden      bool
+	IsSender      bool
+	IsUnread      bool
+	Mentions      []string
+	AttachmentID  string
+	AttachmentIdx int
 	Media         *MatrixMedia
 }
 
