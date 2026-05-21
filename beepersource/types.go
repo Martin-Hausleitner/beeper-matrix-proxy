@@ -174,6 +174,12 @@ type MessageMapping struct {
 	DeletedAt       *time.Time
 }
 
+type ReactionMapping struct {
+	BeeperMessageID string
+	ReactionKey     string
+	MatrixEventID   string
+}
+
 type PendingMutation struct {
 	ID              int64
 	BeeperMessageID string

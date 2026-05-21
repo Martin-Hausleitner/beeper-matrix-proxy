@@ -754,9 +754,11 @@ func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string
 	}
 	for index := 1; index < len(msg.Attachments); index++ {
 		mappingID := attachmentMessageID(msg, index)
-		if existing, ok, err := s.store.MessageByBeeperID(ctx, mappingID); err != nil {
+		existing, exists, err := s.store.MessageByBeeperID(ctx, mappingID)
+		if err != nil {
 			return err
-		} else if ok && existing.Version == version {
+		}
+		if exists && existing.Version == version {
 			continue
 		}
 		att := msg.Attachments[index]
@@ -787,6 +789,18 @@ func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string
 		} else if media != nil {
 			defer media.Close()
 			outbound.Media = media
+		}
+		if exists {
+			outbound.TransactionID = DeterministicTxnID(msg.ChatID, mappingID, MutationEdit, version)
+			if _, err := s.matrix.EditMessage(ctx, outbound, existing.MatrixEventID); err != nil {
+				return err
+			}
+			existing.Version = version
+			existing.DeletedAt = nil
+			if err := s.store.UpsertMessageMapping(ctx, existing); err != nil {
+				return err
+			}
+			continue
 		}
 		eventID, err := s.matrix.SendMessage(ctx, outbound)
 		if err != nil && outbound.Media != nil {
@@ -898,7 +912,7 @@ func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound
 			replyToID = replyTo.BeeperMessageID
 		}
 	}
-	_, err := s.api.SendMessage(ctx, BeeperOutbound{
+	beeperMessageID, err := s.api.SendMessage(ctx, BeeperOutbound{
 		ChatID:      inbound.ChatID,
 		Text:        inbound.Body,
 		HTML:        inbound.HTML,
@@ -908,6 +922,16 @@ func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound
 	})
 	if err != nil {
 		return err
+	}
+	if beeperMessageID != "" && inbound.MatrixEventID != "" {
+		if err := s.store.UpsertMessageMapping(ctx, MessageMapping{
+			BeeperMessageID: beeperMessageID,
+			MatrixEventID:   inbound.MatrixEventID,
+			ChatID:          inbound.ChatID,
+			Version:         firstNonEmpty(inbound.MatrixEventID, inbound.Body),
+		}); err != nil {
+			return err
+		}
 	}
 	return s.store.RememberOutboundEcho(ctx, inbound.ChatID, inbound.Body, inbound.MatrixEventID, 10*time.Minute)
 }
@@ -924,6 +948,16 @@ func (s *Service) HandleMatrixEdit(ctx context.Context, chatID, matrixTargetEven
 }
 
 func (s *Service) HandleMatrixRedaction(ctx context.Context, chatID, matrixTargetEventID string) error {
+	reaction, ok, err := s.store.ReactionByMatrixEventID(ctx, matrixTargetEventID)
+	if err != nil {
+		return err
+	}
+	if ok {
+		if err := s.api.RemoveReaction(ctx, chatID, reaction.BeeperMessageID, reaction.ReactionKey); err != nil {
+			return err
+		}
+		return s.store.DeleteReactionMapping(ctx, matrixTargetEventID)
+	}
 	mapping, ok, err := s.store.MessageByMatrixEventID(ctx, matrixTargetEventID)
 	if err != nil {
 		return err
@@ -943,7 +977,14 @@ func (s *Service) HandleMatrixReaction(ctx context.Context, chatID, matrixEventI
 		return nil
 	}
 	txnID := DeterministicTxnID(chatID, matrixEventID, MutationReaction, reactionKey)
-	return s.api.AddReaction(ctx, chatID, mapping.BeeperMessageID, reactionKey, txnID)
+	if err := s.api.AddReaction(ctx, chatID, mapping.BeeperMessageID, reactionKey, txnID); err != nil {
+		return err
+	}
+	return s.store.UpsertReactionMapping(ctx, ReactionMapping{
+		BeeperMessageID: mapping.BeeperMessageID,
+		ReactionKey:     reactionKey,
+		MatrixEventID:   matrixEventID,
+	})
 }
 
 func messageBody(msg Message) string {

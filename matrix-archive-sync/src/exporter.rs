@@ -116,7 +116,10 @@ fn render_event(
     } else if event.is_redacted {
         html.push_str("<div class=\"body\"><em>redacted or deleted</em></div>");
     }
-    for media_ref in media_refs {
+    if event.is_redacted && !media_refs.is_empty() {
+        html.push_str("<div class=\"media\"><span class=\"marker\">redacted media hidden</span></div>");
+    }
+    for media_ref in media_refs.iter().filter(|_| !event.is_redacted) {
         html.push_str("<div class=\"media\">");
         if let Some(object_hash) = &media_ref.object_hash {
             let relative = object_relative_link(archive_dir, output_dir, object_hash)?;
@@ -178,7 +181,7 @@ fn object_relative_link(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::{ArchiveStore, EventRecord, RoomRecord};
+    use crate::store::{ArchiveStore, EventRecord, MediaRefRecord, RoomRecord};
     use tempfile::tempdir;
 
     #[test]
@@ -220,6 +223,56 @@ mod tests {
         export_html(&store, dir.path(), &out)?;
         let html = fs::read_to_string(out.join("rooms").join("_room_local.html"))?;
         assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+        Ok(())
+    }
+
+    #[test]
+    fn html_export_hides_media_links_for_redacted_events() -> Result<()> {
+        let dir = tempdir()?;
+        let store = ArchiveStore::open(dir.path())?;
+        store.upsert_room(&RoomRecord {
+            room_id: "!room:local".into(),
+            name: Some("Room".into()),
+            canonical_alias: None,
+            avatar_mxc: None,
+            joined_at: Some(0),
+            last_prev_batch: None,
+            backfill_token: None,
+            backfill_done: true,
+        })?;
+        store.insert_event(&EventRecord {
+            event_id: "$redacted".into(),
+            room_id: "!room:local".into(),
+            origin_server_ts: Some(0),
+            sender: Some("@a:local".into()),
+            event_type: "m.room.message".into(),
+            state_key: None,
+            msgtype: Some("m.image".into()),
+            relates_to_event_id: None,
+            relation_type: None,
+            redacts_event_id: None,
+            is_encrypted: false,
+            is_redacted: true,
+            body_text: None,
+            formatted_body_html: None,
+            raw_event: serde_json::json!({"event_id": "$redacted"}),
+            decrypted_event: None,
+            canonical_sha256: "hash".into(),
+            received_at: 0,
+            source_batch: "test".into(),
+        })?;
+        store.insert_media_ref(&MediaRefRecord {
+            event_id: "$redacted".into(),
+            field_path: "content.url".into(),
+            mxc_uri: "mxc://server/redacted-media".into(),
+            object_hash: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into()),
+            encrypted_file_json: None,
+        })?;
+        let out = dir.path().join("html");
+        export_html(&store, dir.path(), &out)?;
+        let html = fs::read_to_string(out.join("rooms").join("_room_local.html"))?;
+        assert!(html.contains("redacted media hidden"));
+        assert!(!html.contains("mxc://server/redacted-media"));
         Ok(())
     }
 }

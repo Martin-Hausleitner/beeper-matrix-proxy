@@ -131,11 +131,10 @@ public `main` branch.
 - Unit tests for the new Beeper-source config, SDK adapter, store, mapping,
   pipeline, WebSocket subscription command, media policy, and safety behavior.
 - README performance snapshot with measured hot-path improvements.
-- README live VCVM all-chat evidence: 700 discovered Beeper chats, 694 active,
-  6 archived, 701 Matrix portal rows, 0 missing active chats, 701/701 portal
-  rooms joined by `@cinny_beeper_test:100.120.120.120`, and a saved Cinny
-  screenshot at `/tmp/beeper-source-cinny-all-chats-final.png`.
-- README live Matrix Spaces evidence: 5 service spaces under the Beeper root,
+- README live all-chat evidence now documents the verification shape without
+  committing local room counts, Matrix IDs, Tailnet hostnames, or screenshot
+  paths that can identify a private deployment.
+- README live Matrix Spaces evidence: service spaces under the Beeper root,
   6/6 spaces joined by the Cinny test user, and PNG avatar state verified for
   all service spaces.
 - README link to this changelog.
@@ -211,10 +210,10 @@ public `main` branch.
 - Live Signal and WhatsApp media E2E in both directions for file, GIF, and
   audio; Cinny rendered the Matrix rooms with file controls, GIF previews, and
   audio playback controls.
-- Live VCVM all-chat rooms-only import measured 700 Beeper chats via paginated
-  `/v1/chats` (694 active, 6 archived). The safe import runs with Matrix ->
-  Beeper disabled, Matrix Spaces, PNG platform avatars, and resumable portal
-  creation because Synapse room creation rate-limits still apply.
+- Live all-chat rooms-only import uses paginated `/v1/chats`. The safe import
+  runs with Matrix -> Beeper disabled, Matrix Spaces, PNG platform avatars, and
+  resumable portal creation because Synapse room creation rate-limits still
+  apply.
 
 ## 2026-05-20
 

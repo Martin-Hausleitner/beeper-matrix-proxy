@@ -1110,6 +1110,70 @@ func TestReconcileBeeperMediaEditKeepsMediaOnReplacement(t *testing.T) {
 	}
 }
 
+func TestReconcileBeeperSecondaryAttachmentEditUpdatesExistingMatrixEvent(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	editTime := time.Unix(200, 0).UTC()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{ID: "!chat:beeper", AccountID: "whatsapp", Name: "Album Edit"}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:              "$beeper-album-edit",
+				AccountID:       "whatsapp",
+				ChatID:          "!chat:beeper",
+				SenderID:        "@alice:whatsapp",
+				SenderName:      "Alice",
+				Type:            MessageTypeImage,
+				Text:            "edited album",
+				Timestamp:       time.Unix(100, 0).UTC(),
+				EditedTimestamp: &editTime,
+				Attachments: []Attachment{
+					{ID: "photo-1", URL: "localmxc://photo-1", FileName: "photo1.jpg", MimeType: "image/jpeg", SizeBytes: 10},
+					{ID: "photo-2", URL: "localmxc://photo-2", FileName: "photo2.jpg", MimeType: "image/jpeg", SizeBytes: 11},
+				},
+			}},
+		},
+		assets: map[string]string{
+			"localmxc://photo-1": "imagebytes1",
+			"localmxc://photo-2": "imagebytes2",
+		},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+	for _, mapping := range []MessageMapping{
+		{BeeperMessageID: "$beeper-album-edit", MatrixEventID: "$matrix-primary:local", ChatID: "!chat:beeper", Version: "old"},
+		{BeeperMessageID: "$beeper-album-edit/attachment/1", MatrixEventID: "$matrix-attachment:local", ChatID: "!chat:beeper", Version: "old"},
+	} {
+		if err := store.UpsertMessageMapping(ctx, mapping); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(matrix.events) != 0 {
+		t.Fatalf("expected edit path to avoid duplicate Matrix events, got %#v", matrix.events)
+	}
+	if len(matrix.edits) != 2 {
+		t.Fatalf("expected primary and secondary attachment edits, got %#v", matrix.edits)
+	}
+	if matrix.edits[1].targetEventID != "$matrix-attachment:local" {
+		t.Fatalf("expected secondary attachment edit to target existing event, got %#v", matrix.edits[1])
+	}
+	mapping, ok, err := store.MessageByBeeperID(ctx, "$beeper-album-edit/attachment/1")
+	if err != nil || !ok {
+		t.Fatalf("expected attachment mapping, ok=%v err=%v", ok, err)
+	}
+	if mapping.MatrixEventID != "$matrix-attachment:local" {
+		t.Fatalf("expected existing Matrix event to remain mapped, got %q", mapping.MatrixEventID)
+	}
+	if mapping.Version == "old" {
+		t.Fatal("expected attachment version to update")
+	}
+}
+
 func TestReconcileBeeperDeleteRedactsStoredAttachmentsWhenTombstoneOmitsThem(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
@@ -1152,6 +1216,60 @@ func TestReconcileBeeperDeleteRedactsStoredAttachmentsWhenTombstoneOmitsThem(t *
 	}
 	if attachment.DeletedAt == nil {
 		t.Fatal("expected attachment mapping to be marked deleted")
+	}
+}
+
+func TestMatrixReactionRedactionRemovesBeeperReaction(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	api := &fakeBeeperAPI{}
+	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	if err := store.UpsertMessageMapping(ctx, MessageMapping{
+		BeeperMessageID: "$beeper-target",
+		MatrixEventID:   "$matrix-target:local",
+		ChatID:          "!chat:beeper",
+		Version:         "v1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.HandleMatrixReaction(ctx, "!chat:beeper", "$matrix-reaction:local", "$matrix-target:local", "🎉"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.HandleMatrixRedaction(ctx, "!chat:beeper", "$matrix-reaction:local"); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.reactions) != 2 {
+		t.Fatalf("expected add and delete reaction calls, got %#v", api.reactions)
+	}
+	if !strings.HasPrefix(api.reactions[1], "delete|!chat:beeper|$beeper-target|🎉") {
+		t.Fatalf("expected reaction delete, got %#v", api.reactions)
+	}
+	if _, ok, err := store.ReactionByMatrixEventID(ctx, "$matrix-reaction:local"); err != nil || ok {
+		t.Fatalf("expected reaction mapping to be deleted, ok=%v err=%v", ok, err)
+	}
+}
+
+func TestMatrixMessageStoresReturnedBeeperIDForImmediateMutations(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	api := &fakeBeeperAPI{}
+	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+
+	if err := svc.HandleMatrixMessage(ctx, MatrixInbound{
+		ChatID:        "!chat:beeper",
+		MatrixEventID: "$matrix-new:local",
+		Body:          "hello",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.HandleMatrixEdit(ctx, "!chat:beeper", "$matrix-new:local", "hello edited"); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.updates) != 1 || api.updates[0].ClientTxnID != "$beeper-sent" {
+		t.Fatalf("expected immediate edit to target returned Beeper ID, got %#v", api.updates)
 	}
 }
 

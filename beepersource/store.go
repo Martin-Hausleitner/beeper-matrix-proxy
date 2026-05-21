@@ -78,6 +78,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			matrix_event_id TEXT NOT NULL,
 			PRIMARY KEY (beeper_message_id, reaction_key)
 		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS reaction_mapping_matrix_event_idx ON reaction_mapping(matrix_event_id)`,
 		`CREATE TABLE IF NOT EXISTS pending_mutation (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			beeper_message_id TEXT NOT NULL,
@@ -362,6 +363,12 @@ func (s *Store) UpsertMessageMapping(ctx context.Context, mapping MessageMapping
 	if mapping.DeletedAt != nil {
 		deletedAt = mapping.DeletedAt.Unix()
 	}
+	if _, err := s.db.ExecContext(ctx, `
+		DELETE FROM message_mapping
+		WHERE matrix_event_id=? AND beeper_message_id<>?
+	`, mapping.MatrixEventID, mapping.BeeperMessageID); err != nil {
+		return err
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO message_mapping (beeper_message_id, matrix_event_id, chat_id, version, deleted_at)
 		VALUES (?, ?, ?, ?, ?)
@@ -482,6 +489,36 @@ func (s *Store) MessageMappingsByChat(ctx context.Context, chatID string) ([]Mes
 		mappings = append(mappings, mapping)
 	}
 	return mappings, rows.Err()
+}
+
+func (s *Store) UpsertReactionMapping(ctx context.Context, mapping ReactionMapping) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO reaction_mapping (beeper_message_id, reaction_key, matrix_event_id)
+		VALUES (?, ?, ?)
+		ON CONFLICT(beeper_message_id, reaction_key) DO UPDATE SET
+			matrix_event_id=excluded.matrix_event_id
+	`, mapping.BeeperMessageID, mapping.ReactionKey, mapping.MatrixEventID)
+	return err
+}
+
+func (s *Store) ReactionByMatrixEventID(ctx context.Context, matrixEventID string) (ReactionMapping, bool, error) {
+	var mapping ReactionMapping
+	err := s.db.QueryRowContext(ctx, `
+		SELECT beeper_message_id, reaction_key, matrix_event_id
+		FROM reaction_mapping WHERE matrix_event_id=?
+	`, matrixEventID).Scan(&mapping.BeeperMessageID, &mapping.ReactionKey, &mapping.MatrixEventID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ReactionMapping{}, false, nil
+	}
+	if err != nil {
+		return ReactionMapping{}, false, err
+	}
+	return mapping, true, nil
+}
+
+func (s *Store) DeleteReactionMapping(ctx context.Context, matrixEventID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM reaction_mapping WHERE matrix_event_id=?`, matrixEventID)
+	return err
 }
 
 func (s *Store) EnqueuePendingMutation(ctx context.Context, mutation PendingMutation) (int64, error) {
