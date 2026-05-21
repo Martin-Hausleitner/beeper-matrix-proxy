@@ -196,6 +196,12 @@ mapped Beeper message IDs, and excludes the local target Matrix bridge account
 by default in `-backfill-history` mode to avoid feeding newly-created portal
 rooms back into the Beeper source list.
 
+For durability beyond native Matrix `/sync`, the backfill also stores raw Beeper
+Desktop API message JSON in SQLite and mirrors every Beeper attachment as Matrix
+media. Multi-image albums or messages with multiple files become multiple
+Matrix media events linked by deterministic mappings, so later archive runs can
+download the resulting `mxc://` media and render it offline.
+
 For a fast refresh of already-created rooms, for example after changing room
 name/avatar settings, you can set `BEEPER_MATRIX_PROXY_PORTAL_CHECK_ACCESS=false`
 and `BEEPER_MATRIX_PROXY_MATRIX_SPACES=false`. That skips stale-room probing and

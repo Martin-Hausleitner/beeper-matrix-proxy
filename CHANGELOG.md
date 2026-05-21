@@ -16,6 +16,9 @@ public `main` branch.
 - `cmd/beeper-source -backfill-history`, a safe read-only Beeper Desktop API
   history crawler that paginates older messages with Beeper's `oldestCursor`
   and mirrors them into existing Matrix portal rooms before archive sync.
+- Beeper/BIPA history mirroring now stores raw Desktop API message JSON locally
+  and mirrors every attachment in a multi-attachment message as its own Matrix
+  media event instead of only preserving the first file.
 - `cmd/beeper-source`, an executable reconcile loop that reads Beeper Desktop
   API chats and mirrors them into Matrix rooms.
 - Matrix client sink for `beeper-source` with room creation, deterministic

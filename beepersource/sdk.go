@@ -248,15 +248,22 @@ func convertSDKChat(in beeperdesktopapi.Chat) Chat {
 func convertSDKMessage(in shared.Message) Message {
 	msg := Message{
 		ID:              in.ID,
+		AccountID:       in.AccountID,
 		ChatID:          in.ChatID,
 		SenderID:        in.SenderID,
 		SenderName:      in.SenderName,
+		SortKey:         in.SortKey,
 		Type:            string(in.Type),
 		Text:            in.Text,
 		Timestamp:       in.Timestamp,
 		IsDeleted:       in.IsDeleted,
+		IsHidden:        in.IsHidden,
+		IsSender:        in.IsSender,
+		IsUnread:        in.IsUnread,
 		LinkedMessageID: in.LinkedMessageID,
+		Mentions:        append([]string(nil), in.Mentions...),
 		Attachments:     make([]Attachment, 0, len(in.Attachments)),
+		RawJSON:         in.RawJSON(),
 	}
 	if !in.EditedTimestamp.IsZero() {
 		edited := in.EditedTimestamp

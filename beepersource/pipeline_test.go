@@ -200,6 +200,68 @@ func TestReconcileMirrorsImageAttachmentAsMatrixMedia(t *testing.T) {
 	}
 }
 
+func TestReconcileMirrorsEveryBeeperAttachmentAsMatrixMedia(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{ID: "!chat:beeper", AccountID: "whatsapp", Name: "Multi Media"}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:        "$multi",
+				ChatID:    "!chat:beeper",
+				SenderID:  "@alice:local-whatsapp.localhost",
+				Type:      MessageTypeImage,
+				Text:      "album",
+				Timestamp: time.Unix(100, 0).UTC(),
+				Attachments: []Attachment{{
+					ID:        "att-1",
+					URL:       "localmxc://one",
+					FileName:  "one.png",
+					MimeType:  "image/png",
+					SizeBytes: 3,
+				}, {
+					ID:        "att-2",
+					URL:       "localmxc://two",
+					FileName:  "two.jpg",
+					MimeType:  "image/jpeg",
+					SizeBytes: 3,
+				}},
+				RawJSON: `{"id":"$multi","attachments":[{"id":"att-1"},{"id":"att-2"}]}`,
+			}},
+		},
+		assets: map[string]string{
+			"localmxc://one": "one",
+			"localmxc://two": "two",
+		},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if len(matrix.events) != 2 {
+		t.Fatalf("expected one Matrix media event per Beeper attachment, got %d", len(matrix.events))
+	}
+	if matrix.events[0].Media == nil || matrix.events[0].Media.FileName != "one.png" {
+		t.Fatalf("unexpected first media event: %#v", matrix.events[0])
+	}
+	if matrix.events[1].Media == nil || matrix.events[1].Media.FileName != "two.jpg" {
+		t.Fatalf("unexpected second media event: %#v", matrix.events[1])
+	}
+	if _, ok, err := store.MessageByBeeperID(ctx, "$multi/attachment/1"); err != nil || !ok {
+		t.Fatalf("expected second attachment mapping, ok=%v err=%v", ok, err)
+	}
+	raw, ok, err := store.BeeperMessageRaw(ctx, "$multi")
+	if err != nil || !ok {
+		t.Fatalf("expected raw Beeper message to be stored, ok=%v err=%v", ok, err)
+	}
+	if !strings.Contains(raw, `"att-2"`) {
+		t.Fatalf("expected raw metadata to include every attachment, got %s", raw)
+	}
+}
+
 func TestReconcileMapsBeeperLinkedMessageToMatrixReply(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)

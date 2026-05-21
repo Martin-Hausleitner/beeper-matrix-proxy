@@ -113,6 +113,15 @@ func (s *Store) migrate(ctx context.Context) error {
 			PRIMARY KEY (chat_id, body, matrix_event_id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS outbound_echo_lookup_idx ON outbound_echo(chat_id, body, expires_at)`,
+		`CREATE TABLE IF NOT EXISTS beeper_message_raw (
+			beeper_message_id TEXT PRIMARY KEY,
+			chat_id TEXT NOT NULL,
+			account_id TEXT,
+			sort_key TEXT,
+			raw_json TEXT NOT NULL,
+			updated_at INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS beeper_message_raw_chat_idx ON beeper_message_raw(chat_id)`,
 	}
 	for _, stmt := range schema {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -126,6 +135,35 @@ func (s *Store) migrate(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Store) UpsertBeeperMessageRaw(ctx context.Context, msg Message) error {
+	if msg.ID == "" || msg.RawJSON == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO beeper_message_raw (beeper_message_id, chat_id, account_id, sort_key, raw_json, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(beeper_message_id) DO UPDATE SET
+			chat_id=excluded.chat_id,
+			account_id=excluded.account_id,
+			sort_key=excluded.sort_key,
+			raw_json=excluded.raw_json,
+			updated_at=excluded.updated_at
+	`, msg.ID, msg.ChatID, msg.AccountID, msg.SortKey, msg.RawJSON, time.Now().Unix())
+	return err
+}
+
+func (s *Store) BeeperMessageRaw(ctx context.Context, messageID string) (string, bool, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, "SELECT raw_json FROM beeper_message_raw WHERE beeper_message_id=?", messageID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return raw, true, nil
 }
 
 func (s *Store) addColumnIfMissing(ctx context.Context, table, column, definition string) error {

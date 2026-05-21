@@ -61,17 +61,24 @@ type Attachment struct {
 
 type Message struct {
 	ID              string
+	AccountID       string
 	ChatID          string
 	SenderID        string
 	SenderName      string
+	SortKey         string
 	Type            string
 	Text            string
 	HTML            string
 	Timestamp       time.Time
 	EditedTimestamp *time.Time
 	IsDeleted       bool
+	IsHidden        bool
+	IsSender        bool
+	IsUnread        bool
 	LinkedMessageID string
+	Mentions        []string
 	Attachments     []Attachment
+	RawJSON         string
 }
 
 type MessagePage struct {
