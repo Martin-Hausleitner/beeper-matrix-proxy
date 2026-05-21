@@ -414,7 +414,11 @@ func (s *Service) ensurePortal(ctx context.Context, chat Chat) (string, error) {
 		return "", err
 	}
 	if avatar != nil {
-		if err := s.store.SetValue(ctx, portalAvatarSyncKey(chat.ID), s.portalAvatarSyncValue(chat)); err != nil {
+		syncValue := s.portalAvatarSyncValue(chat)
+		if avatar.AssetID != "" {
+			syncValue = avatar.AssetID
+		}
+		if err := s.store.SetValue(ctx, portalAvatarSyncKey(chat.ID), syncValue); err != nil {
 			return "", err
 		}
 	}
@@ -634,6 +638,12 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, msg Message)
 		}
 		edit := s.matrixOutboundForMessage(roomID, msg, version)
 		edit.TransactionID = DeterministicTxnID(msg.ChatID, msg.ID, MutationEdit, version)
+		if media, err := s.matrixMedia(ctx, msg); err != nil {
+			return err
+		} else if media != nil {
+			defer media.Close()
+			edit.Media = media
+		}
 		if edit.ReplyToEvent == "" && msg.LinkedMessageID != "" {
 			replyTo, ok, err := s.store.MessageByBeeperID(ctx, msg.LinkedMessageID)
 			if err != nil {
@@ -801,16 +811,16 @@ func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string
 }
 
 func (s *Service) redactAdditionalAttachments(ctx context.Context, roomID string, msg Message, version string) error {
-	for index := 1; index < len(msg.Attachments); index++ {
-		mappingID := attachmentMessageID(msg, index)
-		existing, ok, err := s.store.MessageByBeeperID(ctx, mappingID)
-		if err != nil {
-			return err
-		}
-		if !ok || existing.DeletedAt != nil {
+	mappings, err := s.store.MessageMappingsByChat(ctx, msg.ChatID)
+	if err != nil {
+		return err
+	}
+	prefix := msg.ID + "/attachment/"
+	for _, existing := range mappings {
+		if !strings.HasPrefix(existing.BeeperMessageID, prefix) || existing.DeletedAt != nil {
 			continue
 		}
-		txnID := DeterministicTxnID(msg.ChatID, mappingID, MutationDelete, version)
+		txnID := DeterministicTxnID(msg.ChatID, existing.BeeperMessageID, MutationDelete, version)
 		if _, err := s.matrix.RedactMessage(ctx, roomID, existing.MatrixEventID, txnID, "deleted in Beeper source"); err != nil {
 			return err
 		}

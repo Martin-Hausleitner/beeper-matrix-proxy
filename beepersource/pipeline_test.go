@@ -1056,6 +1056,152 @@ func TestReconcileMirrorsBeeperDeleteAsMatrixRedaction(t *testing.T) {
 	}
 }
 
+func TestReconcileBeeperMediaEditKeepsMediaOnReplacement(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	editTime := time.Unix(200, 0).UTC()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{ID: "!chat:beeper", AccountID: "whatsapp", Name: "Media Edit"}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:              "$beeper-media-edit",
+				AccountID:       "whatsapp",
+				ChatID:          "!chat:beeper",
+				SenderID:        "@alice:whatsapp",
+				SenderName:      "Alice",
+				Type:            MessageTypeImage,
+				Text:            "edited caption",
+				Timestamp:       time.Unix(100, 0).UTC(),
+				EditedTimestamp: &editTime,
+				Attachments: []Attachment{{
+					ID:        "photo-1",
+					URL:       "localmxc://photo-1",
+					FileName:  "photo.jpg",
+					MimeType:  "image/jpeg",
+					SizeBytes: 10,
+				}},
+			}},
+		},
+		assets: map[string]string{"localmxc://photo-1": "imagebytes"},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+	if err := store.UpsertMessageMapping(ctx, MessageMapping{
+		BeeperMessageID: "$beeper-media-edit",
+		MatrixEventID:   "$matrix-media:local",
+		ChatID:          "!chat:beeper",
+		Version:         "old",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(matrix.edits) != 1 {
+		t.Fatalf("expected one Matrix edit, got %#v", matrix.edits)
+	}
+	if matrix.edits[0].outbound.Media == nil {
+		t.Fatal("expected media edit replacement to preserve/reupload media")
+	}
+	if matrix.edits[0].outbound.Media.FileName != "photo.jpg" {
+		t.Fatalf("unexpected media %#v", matrix.edits[0].outbound.Media)
+	}
+}
+
+func TestReconcileBeeperDeleteRedactsStoredAttachmentsWhenTombstoneOmitsThem(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{ID: "!chat:beeper", AccountID: "signal", Name: "Deleted album"}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:        "$beeper-album",
+				AccountID: "signal",
+				ChatID:    "!chat:beeper",
+				SenderID:  "@alice:signal",
+				Type:      MessageTypeText,
+				IsDeleted: true,
+				Timestamp: time.Unix(100, 0).UTC(),
+			}},
+		},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+	for _, mapping := range []MessageMapping{
+		{BeeperMessageID: "$beeper-album", MatrixEventID: "$matrix-primary:local", ChatID: "!chat:beeper", Version: "old"},
+		{BeeperMessageID: "$beeper-album/attachment/1", MatrixEventID: "$matrix-attachment-1:local", ChatID: "!chat:beeper", Version: "old"},
+		{BeeperMessageID: "$beeper-album/attachment/2", MatrixEventID: "$matrix-attachment-2:local", ChatID: "!chat:beeper", Version: "old"},
+	} {
+		if err := store.UpsertMessageMapping(ctx, mapping); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(matrix.redactions) != 3 {
+		t.Fatalf("expected primary and two attachment redactions, got %#v", matrix.redactions)
+	}
+	attachment, ok, err := store.MessageByBeeperID(ctx, "$beeper-album/attachment/1")
+	if err != nil || !ok {
+		t.Fatalf("expected attachment mapping, ok=%v err=%v", ok, err)
+	}
+	if attachment.DeletedAt == nil {
+		t.Fatal("expected attachment mapping to be marked deleted")
+	}
+}
+
+func TestReconcileAvatarFallbackDoesNotMarkFailedRealAvatarSynced(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{
+		ID:        "!chat:beeper",
+		AccountID: "telegram",
+		Network:   "Telegram",
+		Name:      "Avatar retry",
+		AvatarURL: "localmxc://real-avatar",
+	}
+	api := &fakeBeeperAPI{
+		chats:       []Chat{chat},
+		messages:    map[string][]Message{"!chat:beeper": nil},
+		assets:      map[string]string{"localmxc://real-avatar": "real-avatar"},
+		assetErrors: map[string]error{"localmxc://real-avatar": errors.New("missing once")},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+
+	if err := svc.ReconcilePortalsOnly(ctx); err != nil {
+		t.Fatal(err)
+	}
+	syncValue, err := store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if syncValue != platformAvatarSyncValue(chat) {
+		t.Fatalf("expected failed real avatar to store platform sync value, got %q", syncValue)
+	}
+
+	delete(api.assetErrors, "localmxc://real-avatar")
+	if err := svc.ReconcilePortalsOnly(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(matrix.avatars) != 2 {
+		t.Fatalf("expected second run to retry and upload real avatar, got %d avatars", len(matrix.avatars))
+	}
+	syncValue, err = store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if syncValue != "localmxc://real-avatar" {
+		t.Fatalf("expected real avatar sync value after retry, got %q", syncValue)
+	}
+}
+
 func ptrTime(t time.Time) *time.Time { return &t }
 
 type fakeBeeperAPI struct {
@@ -1063,6 +1209,7 @@ type fakeBeeperAPI struct {
 	messages         map[string][]Message
 	messagePages     map[string][]MessagePage
 	assets           map[string]string
+	assetErrors      map[string]error
 	downloadedAssets []string
 	sent             []BeeperOutbound
 	updates          []BeeperOutbound
@@ -1092,6 +1239,9 @@ func (f *fakeBeeperAPI) ListMessagePage(ctx context.Context, chatID string, curs
 
 func (f *fakeBeeperAPI) DownloadAsset(ctx context.Context, assetURL string) (*AssetStream, error) {
 	f.downloadedAssets = append(f.downloadedAssets, assetURL)
+	if err := f.assetErrors[assetURL]; err != nil {
+		return nil, err
+	}
 	return &AssetStream{
 		Content:   io.NopCloser(strings.NewReader(f.assets[assetURL])),
 		MimeType:  "application/octet-stream",
