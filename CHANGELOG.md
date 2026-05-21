@@ -9,6 +9,10 @@ public `main` branch.
 
 ### Added
 
+- `matrix-archive-sync`, a standalone Rust CLI that archives standard Matrix
+  rooms into SQLite with zstd-compressed raw events, FTS5 search fields, a
+  SHA-256 content-addressed media store, static HTML/JSONL exports, and
+  restic-friendly snapshot manifests.
 - `cmd/beeper-source`, an executable reconcile loop that reads Beeper Desktop
   API chats and mirrors them into Matrix rooms.
 - Matrix client sink for `beeper-source` with room creation, deterministic

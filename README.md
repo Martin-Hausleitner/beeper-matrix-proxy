@@ -20,6 +20,48 @@ It does **not** patch Beeper Desktop. The bridge tries to speak the data contrac
 that Beeper already understands: room features, Matrix events, media metadata,
 portal rooms, and appservice websocket traffic.
 
+## Matrix Archive Backup Sync
+
+`matrix-archive-sync` is a standalone Rust CLI for creating a readable,
+standard-Matrix-only chat archive. It treats Beeper/BIPA/PIPA chats only as
+normal Matrix rooms after they have already been mirrored into Synapse; it does
+not call Beeper or PIPA APIs and it does not send messages.
+
+The archive format is local-first and restic-friendly:
+
+```text
+matrix-archive/
+  archive.sqlite
+  objects/sha256/ab/cd/<content-hash>
+  html/
+  events.jsonl
+  snapshot/
+```
+
+The SQLite database stores zstd-compressed raw Matrix events plus extracted
+readable fields for search and export. Media is downloaded from `mxc://` URLs
+through the standard authenticated Matrix media endpoint and stored once in a
+SHA-256 content-addressed object store. Missing media, limited timelines, and
+undecrypted E2EE events are recorded as explicit archive gaps.
+
+Typical local usage:
+
+```bash
+cd matrix-archive-sync
+export MATRIX_HOMESERVER_URL="https://vcvm.tail6a40cd.ts.net:3443"
+export MATRIX_ACCESS_TOKEN="..."
+
+cargo run -- --archive-dir ../matrix-archive sync --download-media --passes 1
+cargo run -- --archive-dir ../matrix-archive backfill --download-media --room-limit 4
+cargo run -- --archive-dir ../matrix-archive export-html --output-dir ../matrix-archive/html
+cargo run -- --archive-dir ../matrix-archive export-jsonl --output ../matrix-archive/events.jsonl
+cargo run -- --archive-dir ../matrix-archive snapshot --output-dir ../matrix-archive/snapshot
+restic backup ../matrix-archive/snapshot ../matrix-archive/objects
+```
+
+The v1 restore target is a readable/searchable offline archive, not replaying
+original Matrix event IDs or historical signatures into old rooms.
+
 ## Beeper Source Mode
 
 `beeper-source` is the foundation for exposing Beeper's existing cloud/local
