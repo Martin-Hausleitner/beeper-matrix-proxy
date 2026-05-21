@@ -87,6 +87,69 @@ func TestReconcileIsIdempotentWhenMessageMappingExists(t *testing.T) {
 	}
 }
 
+func TestBackfillHistoryPaginatesOlderMessages(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{ID: "!chat:beeper", AccountID: "local-signal", Name: "History"}
+	api := &fakeBeeperAPI{
+		chats: []Chat{chat},
+		messagePages: map[string][]MessagePage{
+			chat.ID: {{
+				Messages: []Message{{
+					ID:        "$newer",
+					ChatID:    chat.ID,
+					SenderID:  "@bob:local-signal.localhost",
+					Type:      MessageTypeText,
+					Text:      "newer",
+					Timestamp: time.Unix(200, 0).UTC(),
+				}},
+				OldestCursor: "older-page",
+				NewestCursor: "newest",
+				HasMore:      true,
+			}, {
+				Messages: []Message{{
+					ID:        "$older",
+					ChatID:    chat.ID,
+					SenderID:  "@bob:local-signal.localhost",
+					Type:      MessageTypeText,
+					Text:      "older",
+					Timestamp: time.Unix(100, 0).UTC(),
+				}},
+				OldestCursor: "",
+				HasMore:      false,
+			}},
+		},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+
+	result, err := svc.BackfillHistoryOnce(ctx, 1)
+	if err != nil {
+		t.Fatalf("first backfill returned error: %v", err)
+	}
+	if result.ChatsProcessed != 1 || result.MessagesSeen != 1 || result.CompletedChats != 0 {
+		t.Fatalf("unexpected first result: %#v", result)
+	}
+	result, err = svc.BackfillHistoryOnce(ctx, 1)
+	if err != nil {
+		t.Fatalf("second backfill returned error: %v", err)
+	}
+	if result.ChatsProcessed != 1 || result.MessagesSeen != 1 || result.CompletedChats != 1 {
+		t.Fatalf("unexpected second result: %#v", result)
+	}
+	if len(matrix.events) != 2 {
+		t.Fatalf("expected two mirrored events, got %d", len(matrix.events))
+	}
+	done, err := store.PortalBackfillDone(ctx, chat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !done {
+		t.Fatal("expected chat backfill to be marked done")
+	}
+}
+
 func TestReconcileMirrorsImageAttachmentAsMatrixMedia(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
@@ -794,6 +857,7 @@ func ptrTime(t time.Time) *time.Time { return &t }
 type fakeBeeperAPI struct {
 	chats            []Chat
 	messages         map[string][]Message
+	messagePages     map[string][]MessagePage
 	assets           map[string]string
 	downloadedAssets []string
 	sent             []BeeperOutbound
@@ -810,6 +874,16 @@ func (f *fakeBeeperAPI) ListChats(context.Context) ([]Chat, error) {
 
 func (f *fakeBeeperAPI) ListMessages(ctx context.Context, chatID string, afterCursor string, limit int) ([]Message, string, error) {
 	return f.messages[chatID], "cursor-" + chatID, nil
+}
+
+func (f *fakeBeeperAPI) ListMessagePage(ctx context.Context, chatID string, cursor string, direction string) (MessagePage, error) {
+	pages := f.messagePages[chatID]
+	if len(pages) == 0 {
+		return MessagePage{}, nil
+	}
+	page := pages[0]
+	f.messagePages[chatID] = pages[1:]
+	return page, nil
 }
 
 func (f *fakeBeeperAPI) DownloadAsset(ctx context.Context, assetURL string) (*AssetStream, error) {

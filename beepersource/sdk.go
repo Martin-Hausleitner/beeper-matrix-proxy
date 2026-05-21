@@ -69,20 +69,44 @@ func (a *DesktopAPIAdapter) ListChats(ctx context.Context) ([]Chat, error) {
 }
 
 func (a *DesktopAPIAdapter) ListMessages(ctx context.Context, chatID string, afterCursor string, limit int) ([]Message, string, error) {
+	page, err := a.ListMessagePage(ctx, chatID, afterCursor, "after")
+	if err != nil {
+		return nil, "", err
+	}
+	return page.Messages, page.NewestCursor, nil
+}
+
+func (a *DesktopAPIAdapter) ListMessagePage(ctx context.Context, chatID string, cursor string, direction string) (MessagePage, error) {
 	params := beeperdesktopapi.MessageListParams{}
-	if afterCursor != "" {
-		params.Cursor = beeperdesktopapi.String(afterCursor)
-		params.Direction = beeperdesktopapi.MessageListParamsDirectionAfter
+	if cursor != "" {
+		params.Cursor = beeperdesktopapi.String(cursor)
+	}
+	switch direction {
+	case "after":
+		if cursor != "" {
+			params.Direction = beeperdesktopapi.MessageListParamsDirectionAfter
+		}
+	case "before", "":
+		if cursor != "" {
+			params.Direction = beeperdesktopapi.MessageListParamsDirectionBefore
+		}
+	default:
+		return MessagePage{}, fmt.Errorf("unsupported Beeper message page direction %q", direction)
 	}
 	page, err := a.sdk.Client.Messages.List(ctx, chatID, params)
 	if err != nil {
-		return nil, "", err
+		return MessagePage{}, err
 	}
 	messages := make([]Message, 0, len(page.Items))
 	for _, item := range page.Items {
 		messages = append(messages, convertSDKMessage(item))
 	}
-	return messages, page.NewestCursor, nil
+	return MessagePage{
+		Messages:     messages,
+		OldestCursor: page.OldestCursor,
+		NewestCursor: page.NewestCursor,
+		HasMore:      page.HasMore,
+	}, nil
 }
 
 func (a *DesktopAPIAdapter) DownloadAsset(ctx context.Context, assetURL string) (*AssetStream, error) {

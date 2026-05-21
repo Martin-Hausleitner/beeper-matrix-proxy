@@ -23,12 +23,22 @@ type BeeperAPI interface {
 	Health(context.Context) error
 	ListChats(context.Context) ([]Chat, error)
 	ListMessages(ctx context.Context, chatID string, afterCursor string, limit int) ([]Message, string, error)
+	ListMessagePage(ctx context.Context, chatID string, cursor string, direction string) (MessagePage, error)
 	DownloadAsset(ctx context.Context, assetURL string) (*AssetStream, error)
 	SendMessage(ctx context.Context, outbound BeeperOutbound) (string, error)
 	UpdateMessage(ctx context.Context, chatID, messageID, text string) error
 	DeleteMessage(ctx context.Context, chatID, messageID string, forEveryone bool) error
 	AddReaction(ctx context.Context, chatID, messageID, reactionKey, txnID string) error
 	RemoveReaction(ctx context.Context, chatID, messageID, reactionKey string) error
+}
+
+type HistoryBackfillResult struct {
+	ChatsConsidered  int
+	ChatsProcessed   int
+	MessagesSeen     int
+	MessagesMirrored int
+	CompletedChats   int
+	FailedChats      int
 }
 
 type MatrixSink interface {
@@ -88,6 +98,80 @@ func (s *Service) ReconcileOnce(ctx context.Context) error {
 		if err := s.store.UpsertPortal(ctx, chat, roomID, nextCursor); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (s *Service) BackfillHistoryOnce(ctx context.Context, chatLimit int) (HistoryBackfillResult, error) {
+	var result HistoryBackfillResult
+	if chatLimit <= 0 {
+		chatLimit = 1
+	}
+	if err := s.api.Health(ctx); err != nil {
+		return result, err
+	}
+	chats, err := s.api.ListChats(ctx)
+	if err != nil {
+		return result, err
+	}
+	var firstErr error
+	for _, chat := range chats {
+		if !s.cfg.AllowsBeeperChatRecord(chat) {
+			continue
+		}
+		result.ChatsConsidered++
+		done, err := s.store.PortalBackfillDone(ctx, chat.ID)
+		if err != nil {
+			return result, err
+		}
+		if done {
+			continue
+		}
+		if result.ChatsProcessed >= chatLimit {
+			continue
+		}
+		if err := s.backfillChatHistoryPage(ctx, chat, &result); err != nil {
+			result.FailedChats++
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		result.ChatsProcessed++
+	}
+	return result, firstErr
+}
+
+func (s *Service) backfillChatHistoryPage(ctx context.Context, chat Chat, result *HistoryBackfillResult) error {
+	roomID, err := s.ensurePortal(ctx, chat)
+	if err != nil {
+		return err
+	}
+	cursor, done, err := s.store.PortalBackfillCursor(ctx, chat.ID)
+	if err != nil {
+		return err
+	}
+	if done {
+		return nil
+	}
+	page, err := s.api.ListMessagePage(ctx, chat.ID, cursor, "before")
+	if err != nil {
+		return fmt.Errorf("list older Beeper messages for %s: %w", chat.ID, err)
+	}
+	result.MessagesSeen += len(page.Messages)
+	for _, msg := range page.Messages {
+		if err := s.mirrorMessage(ctx, roomID, msg); err != nil {
+			return err
+		}
+		result.MessagesMirrored++
+	}
+	nextCursor := page.OldestCursor
+	completed := len(page.Messages) == 0 || !page.HasMore || nextCursor == ""
+	if err := s.store.SetPortalBackfillState(ctx, chat.ID, nextCursor, completed); err != nil {
+		return err
+	}
+	if completed {
+		result.CompletedChats++
 	}
 	return nil
 }

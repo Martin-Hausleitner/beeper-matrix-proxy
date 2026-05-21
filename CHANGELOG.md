@@ -13,6 +13,9 @@ public `main` branch.
   rooms into SQLite with zstd-compressed raw events, FTS5 search fields, a
   SHA-256 content-addressed media store, static HTML/JSONL exports, and
   restic-friendly snapshot manifests.
+- `cmd/beeper-source -backfill-history`, a safe read-only Beeper Desktop API
+  history crawler that paginates older messages with Beeper's `oldestCursor`
+  and mirrors them into existing Matrix portal rooms before archive sync.
 - `cmd/beeper-source`, an executable reconcile loop that reads Beeper Desktop
   API chats and mirrors them into Matrix rooms.
 - Matrix client sink for `beeper-source` with room creation, deterministic

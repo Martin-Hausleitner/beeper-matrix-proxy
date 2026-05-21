@@ -16,10 +16,11 @@ type Config struct {
 }
 
 type BeeperConfig struct {
-	BaseURL          string
-	TokenEnv         string
-	WebsocketEnabled bool
-	ChatIDs          []string
+	BaseURL           string
+	TokenEnv          string
+	WebsocketEnabled  bool
+	ChatIDs           []string
+	ExcludeAccountIDs []string
 }
 
 type MatrixConfig struct {
@@ -55,10 +56,11 @@ type SafetyConfig struct {
 func DefaultConfig() Config {
 	cfg := Config{
 		Beeper: BeeperConfig{
-			BaseURL:          envString("BEEPER_MATRIX_PROXY_BEEPER_BASE_URL", "http://localhost:23373"),
-			TokenEnv:         envString("BEEPER_MATRIX_PROXY_BEEPER_TOKEN_ENV", "BEEPER_ACCESS_TOKEN"),
-			WebsocketEnabled: envBool("BEEPER_MATRIX_PROXY_BEEPER_WEBSOCKET", true),
-			ChatIDs:          envCSV("BEEPER_MATRIX_PROXY_BEEPER_CHAT_IDS"),
+			BaseURL:           envString("BEEPER_MATRIX_PROXY_BEEPER_BASE_URL", "http://localhost:23373"),
+			TokenEnv:          envString("BEEPER_MATRIX_PROXY_BEEPER_TOKEN_ENV", "BEEPER_ACCESS_TOKEN"),
+			WebsocketEnabled:  envBool("BEEPER_MATRIX_PROXY_BEEPER_WEBSOCKET", true),
+			ChatIDs:           envCSV("BEEPER_MATRIX_PROXY_BEEPER_CHAT_IDS"),
+			ExcludeAccountIDs: envCSV("BEEPER_MATRIX_PROXY_EXCLUDE_ACCOUNT_IDS"),
 		},
 		Matrix: MatrixConfig{
 			HomeserverURL:           envString("BEEPER_MATRIX_PROXY_MATRIX_HOMESERVER_URL", "http://localhost:8008"),
@@ -127,6 +129,11 @@ func (c Config) AllowsBeeperChat(chatID string) bool {
 }
 
 func (c Config) AllowsBeeperChatRecord(chat Chat) bool {
+	for _, accountID := range c.Beeper.ExcludeAccountIDs {
+		if strings.EqualFold(strings.TrimSpace(accountID), strings.TrimSpace(chat.AccountID)) {
+			return false
+		}
+	}
 	if chat.IsArchived && !c.Sync.IncludeArchived {
 		return false
 	}

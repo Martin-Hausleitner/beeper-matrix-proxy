@@ -74,6 +74,13 @@ type Message struct {
 	Attachments     []Attachment
 }
 
+type MessagePage struct {
+	Messages     []Message
+	OldestCursor string
+	NewestCursor string
+	HasMore      bool
+}
+
 type MatrixOutbound struct {
 	RoomID        string
 	MessageID     string

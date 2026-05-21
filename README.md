@@ -179,6 +179,23 @@ downloaded through the Desktop API, including relative BIPA asset URLs resolved
 against `BEEPER_MATRIX_PROXY_BEEPER_BASE_URL`; platform logos are used only as a
 fallback when no chat avatar exists.
 
+To import reachable Beeper message history into those Matrix portal rooms
+without sending anything back to real contacts, run the read-only history
+backfill:
+
+```bash
+export BEEPER_MATRIX_PROXY_SYNC_MODE=read_only
+export BEEPER_MATRIX_PROXY_DISABLE_MATRIX_TO_BEEPER=true
+export BEEPER_MATRIX_PROXY_EXCLUDE_ACCOUNT_IDS=sh-vcvm-matrix
+
+go run ./cmd/beeper-source -db beeper-source-all-chats.db -once -backfill-history -history-chat-limit 20
+```
+
+The backfill is resumable. It stores a per-chat `oldestCursor`, skips already
+mapped Beeper message IDs, and excludes the local target Matrix bridge account
+by default in `-backfill-history` mode to avoid feeding newly-created portal
+rooms back into the Beeper source list.
+
 For a fast refresh of already-created rooms, for example after changing room
 name/avatar settings, you can set `BEEPER_MATRIX_PROXY_PORTAL_CHECK_ACCESS=false`
 and `BEEPER_MATRIX_PROXY_MATRIX_SPACES=false`. That skips stale-room probing and

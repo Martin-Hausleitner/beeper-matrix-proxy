@@ -54,6 +54,8 @@ func (s *Store) migrate(ctx context.Context) error {
 			matrix_room_id TEXT UNIQUE,
 			account_id TEXT,
 			last_cursor TEXT,
+			backfill_cursor TEXT,
+			backfill_done INTEGER NOT NULL DEFAULT 0,
 			last_reconcile_at INTEGER
 		)`,
 		`CREATE TABLE IF NOT EXISTS puppet (
@@ -117,7 +119,39 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := s.addColumnIfMissing(ctx, "portal", "backfill_cursor", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing(ctx, "portal", "backfill_done", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (s *Store) addColumnIfMissing(ctx context.Context, table, column, definition string) error {
+	rows, err := s.db.QueryContext(ctx, "PRAGMA table_info("+table+")")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, "ALTER TABLE "+table+" ADD COLUMN "+column+" "+definition)
+	return err
 }
 
 func (s *Store) RememberOutboundEcho(ctx context.Context, chatID string, body string, matrixEventID string, ttl time.Duration) error {
@@ -209,6 +243,44 @@ func (s *Store) PortalCursor(ctx context.Context, chatID string) (string, error)
 		return "", err
 	}
 	return cursor.String, nil
+}
+
+func (s *Store) PortalBackfillCursor(ctx context.Context, chatID string) (string, bool, error) {
+	var cursor sql.NullString
+	var done int
+	err := s.db.QueryRowContext(ctx, "SELECT backfill_cursor, backfill_done FROM portal WHERE beeper_chat_id=?", chatID).Scan(&cursor, &done)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return cursor.String, done != 0, nil
+}
+
+func (s *Store) PortalBackfillDone(ctx context.Context, chatID string) (bool, error) {
+	var done int
+	err := s.db.QueryRowContext(ctx, "SELECT backfill_done FROM portal WHERE beeper_chat_id=?", chatID).Scan(&done)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return done != 0, nil
+}
+
+func (s *Store) SetPortalBackfillState(ctx context.Context, chatID string, cursor string, done bool) error {
+	doneInt := 0
+	if done {
+		doneInt = 1
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE portal
+		SET backfill_cursor=?, backfill_done=?, last_reconcile_at=?
+		WHERE beeper_chat_id=?
+	`, cursor, doneInt, time.Now().Unix(), chatID)
+	return err
 }
 
 func (s *Store) PortalRoomID(ctx context.Context, chatID string) (string, bool, error) {
