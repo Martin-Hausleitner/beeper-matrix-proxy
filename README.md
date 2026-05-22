@@ -69,14 +69,15 @@ Latest local archive evidence from 2026-05-22:
 | Matrix rooms in archive | 868 |
 | Rooms with refreshed names | 868 |
 | Rooms with Matrix avatar state | 835 |
-| Matrix events archived | 44,761 |
+| Matrix events archived | 45,161 |
 | Sender profile avatar refs | 3,791/3,791 downloaded |
 | Beeper portal room avatars | 524 chat/person avatars, 303 service fallbacks |
 | Downloaded media objects | 2,269 |
+| Downloaded media refs | 8,279/8,279 |
 | Media refs missing an object | 0 |
 | Explicit gaps | 515 documented gaps |
-| Archive size in OneDrive | 760 MB |
-| Latest restic snapshot | 586 MB processed, repository check clean |
+| Archive size in OneDrive | 745 MB |
+| Latest restic snapshot | 588 MB processed, repository check clean |
 
 `sync --refresh-room-state` fetches `/joined_rooms` and each room's current
 `/state`, so room names, service spaces, and `m.room.avatar` state are backed up
@@ -86,6 +87,10 @@ that points at the content-addressed media objects included in the backup.
 `repair-media --download-media` can re-scan already stored raw events when a new
 media extractor is added; it is used for Beeper per-message profile avatars so
 the static HTML archive shows sender photos offline.
+Rooms-only avatar refreshes compute content hashes for downloaded Beeper/BIPA
+avatars and only reuse cached Matrix MXC URLs when the hash still matches, so a
+changed profile picture behind the same Beeper asset URL is uploaded as a fresh
+Matrix room avatar.
 
 ## Beeper Source Mode
 

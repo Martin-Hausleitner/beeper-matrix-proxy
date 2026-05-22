@@ -3,6 +3,7 @@ package beepersource
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"html"
@@ -441,15 +442,20 @@ func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, er
 	if err != nil {
 		return platformAvatarMedia(chat), nil
 	}
+	body, err := io.ReadAll(asset.Content)
+	_ = asset.Content.Close()
+	if err != nil {
+		return platformAvatarMedia(chat), nil
+	}
 	fileName := firstNonEmpty(asset.FileName, "beeper-avatar")
 	mimeType := firstNonEmpty(asset.MimeType, "application/octet-stream")
 	return &MatrixMedia{
-		AssetID:   avatarURL,
-		Content:   asset.Content,
-		Close:     asset.Content.Close,
-		FileName:  fileName,
-		MimeType:  mimeType,
-		SizeBytes: asset.SizeBytes,
+		AssetID:     avatarURL,
+		ContentHash: fmt.Sprintf("%x", sha256.Sum256(body)),
+		Content:     bytes.NewReader(body),
+		FileName:    fileName,
+		MimeType:    mimeType,
+		SizeBytes:   int64(len(body)),
 	}, nil
 }
 
@@ -598,6 +604,15 @@ func localAvatarMedia(rawPath string) (*MatrixMedia, bool, error) {
 		_ = file.Close()
 		return nil, true, err
 	}
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		_ = file.Close()
+		return nil, true, err
+	}
+	if _, err = file.Seek(0, io.SeekStart); err != nil {
+		_ = file.Close()
+		return nil, true, err
+	}
 	mimeType := mime.TypeByExtension(filepath.Ext(path))
 	if mimeType == "" {
 		head := make([]byte, 512)
@@ -609,11 +624,12 @@ func localAvatarMedia(rawPath string) (*MatrixMedia, bool, error) {
 		}
 	}
 	return &MatrixMedia{
-		Content:   file,
-		Close:     file.Close,
-		FileName:  filepath.Base(path),
-		MimeType:  mimeType,
-		SizeBytes: stat.Size(),
+		ContentHash: fmt.Sprintf("%x", hasher.Sum(nil)),
+		Content:     file,
+		Close:       file.Close,
+		FileName:    filepath.Base(path),
+		MimeType:    mimeType,
+		SizeBytes:   stat.Size(),
 	}, true, nil
 }
 

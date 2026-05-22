@@ -93,6 +93,10 @@ public `main` branch.
   Matrix room avatar when the chat itself has no `imgURL`; set
   `BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS=false` to keep service-logo
   fallbacks for those rooms.
+- Beeper/BIPA avatar refreshes now store content hashes and bypass stale Matrix
+  media-cache entries when the avatar bytes change behind the same Beeper asset
+  URL; the local hourly archive script enables forced avatar freshness by
+  default while still reusing unchanged hashes.
 - Rooms-only imports now refresh existing portal room names, topics, and
   avatars instead of only creating missing portals; this keeps idempotent
   re-runs useful after config changes.

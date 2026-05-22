@@ -452,7 +452,7 @@ func (m *MatrixClientSink) uploadAvatar(ctx context.Context, avatar *MatrixMedia
 		if err != nil {
 			return "", nil, err
 		}
-		if ok {
+		if ok && avatarCacheReusable(cached, avatar) {
 			return id.ContentURIString(cached.CachedMXC), &event.FileInfo{
 				MimeType: cached.MimeType,
 				Size:     int(cached.SizeBytes),
@@ -478,6 +478,13 @@ func (m *MatrixClientSink) uploadAvatar(ctx context.Context, avatar *MatrixMedia
 		MimeType: avatar.MimeType,
 		Size:     int(avatar.SizeBytes),
 	}, nil
+}
+
+func avatarCacheReusable(cached MatrixMedia, avatar *MatrixMedia) bool {
+	if avatar == nil || avatar.ContentHash == "" {
+		return true
+	}
+	return cached.ContentHash == avatar.ContentHash
 }
 
 func (m *MatrixClientSink) EnsurePuppet(ctx context.Context, sender Sender) (string, error) {
