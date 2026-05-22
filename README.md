@@ -76,7 +76,7 @@ Latest local archive evidence from 2026-05-22:
 | Media refs missing an object | 0 |
 | Explicit gaps | 515 documented gaps |
 | Archive size in OneDrive | 760 MB |
-| Latest restic snapshot | 217 MB processed, repository check clean |
+| Latest restic snapshot | 586 MB processed, repository check clean |
 
 `sync --refresh-room-state` fetches `/joined_rooms` and each room's current
 `/state`, so room names, service spaces, and `m.room.avatar` state are backed up
