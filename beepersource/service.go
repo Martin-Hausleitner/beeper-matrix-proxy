@@ -701,7 +701,8 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, m
 		}
 		edit.TransactionID = DeterministicTxnID(msg.ChatID, msg.ID, MutationEdit, version)
 		if media, err := s.matrixMedia(ctx, msg); err != nil {
-			return err
+			edit.MsgType = "m.notice"
+			edit.Body = fmt.Sprintf("Unsupported or unavailable Beeper media: %s", err)
 		} else if media != nil {
 			defer media.Close()
 			edit.Media = media
@@ -716,7 +717,19 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, m
 			}
 		}
 		if _, err := s.matrix.EditMessage(ctx, edit, existing.MatrixEventID); err != nil {
-			return err
+			if edit.Media != nil {
+				edit.Media = nil
+				edit.MsgType = "m.notice"
+				edit.Body = fmt.Sprintf("Beeper media could not be mirrored to Matrix: %v", err)
+				if _, retryErr := s.matrix.EditMessage(ctx, edit, existing.MatrixEventID); retryErr == nil {
+					err = nil
+				} else {
+					err = retryErr
+				}
+			}
+			if err != nil {
+				return err
+			}
 		}
 		existing.Version = version
 		existing.DeletedAt = nil
@@ -857,7 +870,19 @@ func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string
 		if exists {
 			outbound.TransactionID = DeterministicTxnID(msg.ChatID, mappingID, MutationEdit, version)
 			if _, err := s.matrix.EditMessage(ctx, outbound, existing.MatrixEventID); err != nil {
-				return err
+				if outbound.Media != nil {
+					outbound.Media = nil
+					outbound.MsgType = "m.notice"
+					outbound.Body = fmt.Sprintf("Beeper media could not be mirrored to Matrix: %v", err)
+					if _, retryErr := s.matrix.EditMessage(ctx, outbound, existing.MatrixEventID); retryErr == nil {
+						err = nil
+					} else {
+						err = retryErr
+					}
+				}
+				if err != nil {
+					return err
+				}
 			}
 			existing.Version = version
 			existing.DeletedAt = nil
@@ -935,6 +960,10 @@ func (s *Service) matrixMediaForAttachment(ctx context.Context, att Attachment) 
 	sizeBytes := att.SizeBytes
 	if sizeBytes == 0 {
 		sizeBytes = asset.SizeBytes
+	}
+	if s.cfg.Media.MaxUploadBytes > 0 && sizeBytes > s.cfg.Media.MaxUploadBytes {
+		_ = asset.Content.Close()
+		return nil, fmt.Errorf("%s is %d bytes, over configured Matrix upload limit %d", fileName, sizeBytes, s.cfg.Media.MaxUploadBytes)
 	}
 	return &MatrixMedia{
 		Content:     asset.Content,

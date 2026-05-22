@@ -28,6 +28,9 @@ public `main` branch.
   the local mapping version.
 - Matrix archive redaction ingest now marks the target event redacted and
   removes its old body from FTS/HTML rendering while preserving raw event blobs.
+- Matrix archive snapshots now write the canonical restic input database as
+  `snapshot/archive.sqlite` and remove stale legacy snapshot files before
+  generating the media manifest.
 - Matrix message events emitted by `beeper-source` include
   `com.openclaw.beeper.source` metadata with source chat/message/account and
   attachment identifiers; the full raw Beeper sidecar DB is included in the
@@ -40,6 +43,10 @@ public `main` branch.
 - Matrix client sink for `beeper-source` with room creation, deterministic
   transaction IDs, optional invite target, sender-prefix fallback, and Beeper
   per-message profile metadata.
+- Beeper -> Matrix media edit uploads now fall back to readable Matrix notices
+  on oversized upload failures instead of blocking history backfill, and sender
+  profile avatar upload failures no longer prevent the message itself from
+  being mirrored.
 - Beeper chat avatar mirroring into Matrix portal room icons, including local
   Beeper media paths, `file://` paths, remote asset downloads, and refreshes for
   already-created rooms.

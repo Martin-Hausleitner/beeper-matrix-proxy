@@ -69,16 +69,19 @@ Latest local archive evidence from 2026-05-22:
 | Matrix rooms in archive | 864 |
 | Rooms with refreshed names | 864 |
 | Rooms with Matrix avatar state | 831 |
-| Matrix events archived | 28,940 |
-| Media references | 2,732 |
-| Downloaded media objects | 1,032 |
+| Matrix events archived | 31,938 |
+| Media references | 2,876 |
+| Downloaded media objects | 1,167 |
 | Media refs missing an object | 0 |
-| Explicit gaps | 328 limited timelines |
-| Archive size in OneDrive | 349 MB |
+| Explicit gaps | 359 limited timelines |
+| Archive size in OneDrive | 420 MB |
+| Latest restic snapshot | 288 MB processed, repository check clean |
 
 `sync --refresh-room-state` fetches `/joined_rooms` and each room's current
 `/state`, so room names, service spaces, and `m.room.avatar` state are backed up
-even when an incremental `/sync` response omits old state events.
+even when an incremental `/sync` response omits old state events. The snapshot
+command writes a restic-ready `snapshot/archive.sqlite` plus `manifest.json`
+that points at the content-addressed media objects included in the backup.
 
 ## Beeper Source Mode
 
@@ -121,7 +124,7 @@ Current `beeper-source` implementation status:
 | Platform names/icons | Supported | Rooms-only mode groups rooms into Matrix Spaces per Beeper `network` (`WhatsApp`, `Signal`, `Telegram`, etc.); generated platform PNG logos are cached once per service for the service spaces and as a room-avatar fallback when a chat has no Beeper `imgURL`. |
 | Matrix Spaces by messenger | Supported | Rooms-only import creates a Beeper root space and top-level service spaces for WhatsApp, Signal, Telegram, bridgev2, and Beeper(Matrix), then links portal rooms under the matching service. |
 | Echo suppression | Supported | Persistent SQLite echo table maps Beeper echoes back to the original Matrix event, including changed echo versions after edits. |
-| Media policy | Partial | Matrix -> Beeper multipart upload works; oversized-media fallback exists. Full streaming for very large files is still future work. |
+| Media policy | Partial | Matrix -> Beeper multipart upload works; Beeper -> Matrix oversized media and media-edit upload failures fall back to readable Matrix notices. Full streaming for very large files is still future work. |
 | Deeper enrichment | Partial | Platform detection implemented; contact merging and analytics reports are later. |
 
 Local E2E evidence policy:
@@ -261,7 +264,7 @@ Docker Synapse E2E:
 | Poll/raw event clone allocations | ~60 allocs/run | 12 allocs/op | ~80% fewer |
 | Default remote `/sync` burst window | 50 timeline events | 100 timeline events | 2x larger |
 | Local Synapse burst E2E | 40/40 messages | 100/100 messages | larger verified burst |
-| `beeper-source` 500-text-message reconcile benchmark | ~25.0 ms/op, 1.44 MB/op | ~26.2 ms/op, 1.44 MB/op | steady after reply/avatar additions |
+| `beeper-source` 500-text-message reconcile benchmark | ~25.0 ms/op, 1.44 MB/op | ~31.2 ms/op, 2.83 MB/op | steady with raw sidecar storage, reply/avatar additions, and media fallback checks |
 | Matrix -> Beeper echo mapping | required a second manual run | one proxy run when Matrix events were handled | faster stable mappings with no extra idle reconcile |
 
 The current 100-message Synapse burst test delivered all events with roughly

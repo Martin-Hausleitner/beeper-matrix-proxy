@@ -25,9 +25,13 @@ pub fn create_snapshot(store: &ArchiveStore, archive_dir: &Path, output_dir: &Pa
     fs::create_dir_all(output_dir)
         .with_context(|| format!("create snapshot directory {}", output_dir.display()))?;
     store.checkpoint()?;
-    let snapshot_db = output_dir.join("archive.sqlite.snapshot");
+    let snapshot_db = output_dir.join("archive.sqlite");
     if snapshot_db.exists() {
         fs::remove_file(&snapshot_db)?;
+    }
+    let legacy_snapshot_db = output_dir.join("archive.sqlite.snapshot");
+    if legacy_snapshot_db.exists() {
+        fs::remove_file(&legacy_snapshot_db)?;
     }
     let sql = format!(
         "VACUUM INTO '{}'",
@@ -72,7 +76,7 @@ mod tests {
         let store = ArchiveStore::open(dir.path())?;
         let out = dir.path().join("snapshot");
         create_snapshot(&store, dir.path(), &out)?;
-        assert!(out.join("archive.sqlite.snapshot").exists());
+        assert!(out.join("archive.sqlite").exists());
         assert!(out.join("manifest.json").exists());
         Ok(())
     }

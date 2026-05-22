@@ -552,10 +552,7 @@ func (m *MatrixClientSink) messageContent(ctx context.Context, outbound MatrixOu
 	}
 	if outbound.SenderAvatar != nil {
 		avatarURL, _, err := m.uploadAvatar(ctx, outbound.SenderAvatar)
-		if err != nil {
-			return nil, err
-		}
-		if avatarURL != "" {
+		if err == nil && avatarURL != "" {
 			profile.AvatarURL = &avatarURL
 		}
 	}

@@ -830,6 +830,47 @@ func TestReconcileFallsBackToNoticeWhenMatrixMediaUploadFails(t *testing.T) {
 	}
 }
 
+func TestReconcileUsesFallbackWhenDownloadedMediaExceedsLimit(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{ID: "!chat:beeper", AccountID: "whatsapp", Name: "Media Test"}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:        "$img1",
+				ChatID:    "!chat:beeper",
+				SenderID:  "@alice:local-whatsapp.localhost",
+				Type:      MessageTypeImage,
+				Timestamp: time.Unix(100, 0).UTC(),
+				Attachments: []Attachment{{
+					URL:      "localmxc://large-image",
+					FileName: "large-image.png",
+					MimeType: "image/png",
+				}},
+			}},
+		},
+		assets: map[string]string{"localmxc://large-image": strings.Repeat("x", 2048)},
+	}
+	matrix := &fakeMatrixSink{}
+	cfg := DefaultConfig()
+	cfg.Media.MaxUploadBytes = 1024
+	svc := NewService(cfg, store, api, matrix)
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if len(matrix.events) != 1 {
+		t.Fatalf("expected one fallback notice, got %d events", len(matrix.events))
+	}
+	if matrix.events[0].Media != nil {
+		t.Fatal("expected oversized downloaded media not to be uploaded")
+	}
+	if matrix.events[0].MsgType != "m.notice" || !strings.Contains(matrix.events[0].Body, "over configured Matrix upload limit") {
+		t.Fatalf("unexpected fallback event: %#v", matrix.events[0])
+	}
+}
+
 func TestMatrixToBeeperHonorsSafetyModes(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -1262,6 +1303,60 @@ func TestReconcileBeeperMediaEditKeepsMediaOnReplacement(t *testing.T) {
 	}
 }
 
+func TestReconcileFallsBackToNoticeWhenMatrixMediaEditUploadFails(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	editTime := time.Unix(200, 0).UTC()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{ID: "!chat:beeper", AccountID: "whatsapp", Name: "Media Edit"}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:              "$beeper-media-edit-fail",
+				AccountID:       "whatsapp",
+				ChatID:          "!chat:beeper",
+				SenderID:        "@alice:whatsapp",
+				SenderName:      "Alice",
+				Type:            MessageTypeImage,
+				Text:            "edited caption",
+				Timestamp:       time.Unix(100, 0).UTC(),
+				EditedTimestamp: &editTime,
+				Attachments: []Attachment{{
+					ID:        "photo-1",
+					URL:       "localmxc://photo-1",
+					FileName:  "photo.jpg",
+					MimeType:  "image/jpeg",
+					SizeBytes: 10,
+				}},
+			}},
+		},
+		assets: map[string]string{"localmxc://photo-1": "imagebytes"},
+	}
+	matrix := &fakeMatrixSink{failMedia: true}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+	if err := store.UpsertMessageMapping(ctx, MessageMapping{
+		BeeperMessageID: "$beeper-media-edit-fail",
+		MatrixEventID:   "$matrix-media:local",
+		ChatID:          "!chat:beeper",
+		Version:         "old",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(matrix.edits) != 2 {
+		t.Fatalf("expected media edit attempt and fallback notice edit, got %#v", matrix.edits)
+	}
+	if matrix.edits[0].outbound.Media == nil {
+		t.Fatal("expected first edit attempt to carry media")
+	}
+	if matrix.edits[1].outbound.Media != nil || matrix.edits[1].outbound.MsgType != "m.notice" || !strings.Contains(matrix.edits[1].outbound.Body, "could not be mirrored") {
+		t.Fatalf("unexpected fallback edit: %#v", matrix.edits[1].outbound)
+	}
+}
+
 func TestReconcileBeeperSecondaryAttachmentEditUpdatesExistingMatrixEvent(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
@@ -1323,6 +1418,61 @@ func TestReconcileBeeperSecondaryAttachmentEditUpdatesExistingMatrixEvent(t *tes
 	}
 	if mapping.Version == "old" {
 		t.Fatal("expected attachment version to update")
+	}
+}
+
+func TestReconcileSecondaryAttachmentEditFallsBackToNoticeWhenUploadFails(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	editTime := time.Unix(200, 0).UTC()
+	msg := Message{
+		ID:              "$beeper-album-edit-fail",
+		AccountID:       "whatsapp",
+		ChatID:          "!chat:beeper",
+		SenderID:        "@alice:whatsapp",
+		SenderName:      "Alice",
+		Type:            MessageTypeImage,
+		Text:            "edited album",
+		Timestamp:       time.Unix(100, 0).UTC(),
+		EditedTimestamp: &editTime,
+		Attachments: []Attachment{
+			{ID: "photo-1", URL: "localmxc://photo-1", FileName: "photo1.jpg", MimeType: "image/jpeg", SizeBytes: 10},
+			{ID: "photo-2", URL: "localmxc://photo-2", FileName: "photo2.jpg", MimeType: "image/jpeg", SizeBytes: 11},
+		},
+	}
+	api := &fakeBeeperAPI{
+		chats: []Chat{{ID: "!chat:beeper", AccountID: "whatsapp", Name: "Album Edit"}},
+		messages: map[string][]Message{
+			"!chat:beeper": {msg},
+		},
+		assets: map[string]string{
+			"localmxc://photo-1": "imagebytes1",
+			"localmxc://photo-2": "imagebytes2",
+		},
+	}
+	matrix := &fakeMatrixSink{failMedia: true}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+	for _, mapping := range []MessageMapping{
+		{BeeperMessageID: "$beeper-album-edit-fail", MatrixEventID: "$matrix-primary:local", ChatID: "!chat:beeper", Version: MessageVersion(msg)},
+		{BeeperMessageID: "$beeper-album-edit-fail/attachment/1", MatrixEventID: "$matrix-attachment:local", ChatID: "!chat:beeper", Version: "old"},
+	} {
+		if err := store.UpsertMessageMapping(ctx, mapping); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(matrix.edits) != 2 {
+		t.Fatalf("expected secondary attachment media edit attempt and fallback notice, got %#v", matrix.edits)
+	}
+	if matrix.edits[0].targetEventID != "$matrix-attachment:local" || matrix.edits[0].outbound.Media == nil {
+		t.Fatalf("expected first secondary edit to target attachment with media, got %#v", matrix.edits[0])
+	}
+	if matrix.edits[1].targetEventID != "$matrix-attachment:local" || matrix.edits[1].outbound.Media != nil || matrix.edits[1].outbound.MsgType != "m.notice" {
+		t.Fatalf("unexpected secondary attachment fallback edit: %#v", matrix.edits[1])
 	}
 }
 
@@ -1625,6 +1775,9 @@ func (f *fakeMatrixSink) EditMessage(ctx context.Context, outbound MatrixOutboun
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.edits = append(f.edits, fakeMatrixEdit{outbound: outbound, targetEventID: targetEventID})
+	if f.failMedia && outbound.Media != nil {
+		return "", errors.New("HTTP 413")
+	}
 	return "$edit-" + outbound.MessageID + ":local", nil
 }
 
