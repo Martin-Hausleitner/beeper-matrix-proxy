@@ -408,10 +408,10 @@ func TestReconcileUsesPlatformAvatarForDirectPortalWhenParticipantAvatarsDisable
 		t.Fatalf("expected no participant avatar download, got %#v", api.downloadedAssets)
 	}
 	if len(matrix.avatars) != 1 {
-		t.Fatalf("expected one platform avatar, got %d", len(matrix.avatars))
+		t.Fatalf("expected one generated fallback avatar, got %d", len(matrix.avatars))
 	}
-	if matrix.avatars[0].AssetID != platformAvatarSyncValue(api.chats[0]) {
-		t.Fatalf("expected platform avatar fallback, got %#v", matrix.avatars[0])
+	if !strings.HasPrefix(matrix.avatars[0].AssetID, "avatar-fallback-v2:!chat:beeper:whatsapp:") {
+		t.Fatalf("expected generated contact fallback avatar, got %#v", matrix.avatars[0])
 	}
 }
 
@@ -1684,8 +1684,8 @@ func TestReconcileAvatarFallbackDoesNotMarkFailedRealAvatarSynced(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if syncValue != platformAvatarSyncValue(chat) {
-		t.Fatalf("expected failed real avatar to store platform sync value, got %q", syncValue)
+	if !strings.HasPrefix(syncValue, "avatar-fallback-v2:!chat:beeper:telegram:") {
+		t.Fatalf("expected failed real avatar to store generated fallback sync value, got %q", syncValue)
 	}
 
 	delete(api.assetErrors, "localmxc://real-avatar")

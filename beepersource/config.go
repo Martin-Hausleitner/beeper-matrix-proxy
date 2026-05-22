@@ -24,19 +24,20 @@ type BeeperConfig struct {
 }
 
 type MatrixConfig struct {
-	HomeserverURL           string
-	TokenEnv                string
-	UserID                  string
-	InviteUserID            string
-	RoomNamePrefix          string
-	RoomNameIncludePlatform bool
-	PrefixSender            bool
-	PlatformAvatars         bool
-	DMParticipantAvatars    bool
-	AvatarBadges            bool
-	ForceAvatarSync         bool
-	Spaces                  bool
-	InsecureSkipTLS         bool
+	HomeserverURL              string
+	TokenEnv                   string
+	UserID                     string
+	InviteUserID               string
+	RoomNamePrefix             string
+	RoomNameIncludePlatform    bool
+	PrefixSender               bool
+	PlatformAvatars            bool
+	DMParticipantAvatars       bool
+	AvatarBadges               bool
+	ContactAvatarOverridesPath string
+	ForceAvatarSync            bool
+	Spaces                     bool
+	InsecureSkipTLS            bool
 }
 
 type SyncConfig struct {
@@ -66,19 +67,20 @@ func DefaultConfig() Config {
 			ExcludeAccountIDs: envCSV("BEEPER_MATRIX_PROXY_EXCLUDE_ACCOUNT_IDS"),
 		},
 		Matrix: MatrixConfig{
-			HomeserverURL:           envString("BEEPER_MATRIX_PROXY_MATRIX_HOMESERVER_URL", "http://localhost:8008"),
-			TokenEnv:                envString("BEEPER_MATRIX_PROXY_MATRIX_TOKEN_ENV", "MATRIX_ACCESS_TOKEN"),
-			UserID:                  envString("BEEPER_MATRIX_PROXY_MATRIX_USER_ID", ""),
-			InviteUserID:            envString("BEEPER_MATRIX_PROXY_MATRIX_INVITE_USER_ID", ""),
-			RoomNamePrefix:          envStringAllowEmpty("BEEPER_MATRIX_PROXY_MATRIX_ROOM_PREFIX", "Beeper: "),
-			RoomNameIncludePlatform: envBool("BEEPER_MATRIX_PROXY_MATRIX_ROOM_INCLUDE_PLATFORM", true),
-			PrefixSender:            envBool("BEEPER_MATRIX_PROXY_MATRIX_PREFIX_SENDER", true),
-			PlatformAvatars:         envBool("BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS", false),
-			DMParticipantAvatars:    envBool("BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS", true),
-			AvatarBadges:            envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES", true),
-			ForceAvatarSync:         envBool("BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC", false),
-			Spaces:                  envBool("BEEPER_MATRIX_PROXY_MATRIX_SPACES", false),
-			InsecureSkipTLS:         envBool("BEEPER_MATRIX_PROXY_MATRIX_INSECURE_TLS", false),
+			HomeserverURL:              envString("BEEPER_MATRIX_PROXY_MATRIX_HOMESERVER_URL", "http://localhost:8008"),
+			TokenEnv:                   envString("BEEPER_MATRIX_PROXY_MATRIX_TOKEN_ENV", "MATRIX_ACCESS_TOKEN"),
+			UserID:                     envString("BEEPER_MATRIX_PROXY_MATRIX_USER_ID", ""),
+			InviteUserID:               envString("BEEPER_MATRIX_PROXY_MATRIX_INVITE_USER_ID", ""),
+			RoomNamePrefix:             envStringAllowEmpty("BEEPER_MATRIX_PROXY_MATRIX_ROOM_PREFIX", "Beeper: "),
+			RoomNameIncludePlatform:    envBool("BEEPER_MATRIX_PROXY_MATRIX_ROOM_INCLUDE_PLATFORM", true),
+			PrefixSender:               envBool("BEEPER_MATRIX_PROXY_MATRIX_PREFIX_SENDER", true),
+			PlatformAvatars:            envBool("BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS", false),
+			DMParticipantAvatars:       envBool("BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS", true),
+			AvatarBadges:               envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES", true),
+			ContactAvatarOverridesPath: envString("BEEPER_MATRIX_PROXY_CONTACT_AVATAR_OVERRIDES", ""),
+			ForceAvatarSync:            envBool("BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC", false),
+			Spaces:                     envBool("BEEPER_MATRIX_PROXY_MATRIX_SPACES", false),
+			InsecureSkipTLS:            envBool("BEEPER_MATRIX_PROXY_MATRIX_INSECURE_TLS", false),
 		},
 		Sync: SyncConfig{
 			Mode:                 envString("BEEPER_MATRIX_PROXY_SYNC_MODE", SyncModeBidirectional),

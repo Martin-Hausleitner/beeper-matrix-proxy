@@ -13,6 +13,11 @@ public `main` branch.
   rooms into SQLite with zstd-compressed raw events, FTS5 search fields, a
   SHA-256 content-addressed media store, static HTML/JSONL exports, and
   restic-friendly snapshot manifests.
+- `infra/winner-stack`, a production blueprint for the selected 8 GB RAM /
+  256 GB local deployment: Synapse via matrix-docker-ansible-deploy or
+  Etke-compatible Ansible, Element Web, Cinny, minimal Nextcloud Docker Compose,
+  PostgreSQL, Redis, S3 primary storage for Matrix media and Nextcloud files,
+  plus restic backup/restore-check scripts.
 - `cmd/beeper-source -backfill-history`, a safe read-only Beeper Desktop API
   history crawler that paginates older messages with Beeper's `oldestCursor`
   and mirrors them into existing Matrix portal rooms before archive sync.
@@ -53,10 +58,18 @@ public `main` branch.
 - Beeper chat avatar mirroring into Matrix portal room icons, including local
   Beeper media paths, `file://` paths, remote asset downloads, and refreshes for
   already-created rooms.
-- `BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES=true` composes a small messenger
+- `BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES=true` composes a messenger
   badge into real Beeper/BIPA chat or participant avatars, so Cinny and Element
   can show both the person/profile picture and the service marker through the
   standard Matrix `m.room.avatar` field.
+- Avatar badges now use embedded local brand-icon PNG assets, a larger
+  app-style badge treatment, and `avatar-badge-v2` cache keys. Rooms without a
+  real chat/person photo now get a generated person/default avatar plus the
+  service badge instead of a logo-only room avatar.
+- `BEEPER_MATRIX_PROXY_CONTACT_AVATAR_OVERRIDES` can point at a private local
+  YAML file for manually approved contact-photo overrides. These overrides win
+  before Beeper/BIPA participant or chat avatars and are intentionally ignored by
+  Git.
 - `cmd/beeper-source -rooms-only` to create/update Matrix rooms for all Beeper
   chats without importing message history or enabling Matrix -> Beeper sends.
 - Paginated Beeper chat discovery via `/v1/chats`, so all chats are considered

@@ -10,6 +10,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.44
 	github.com/rs/zerolog v1.35.1
 	go.mau.fi/util v0.9.9
+	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mautrix v0.28.0
 )
 
@@ -36,6 +37,5 @@ require (
 	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	maunium.net/go/mauflag v1.0.0 // indirect
 )

@@ -1,0 +1,137 @@
+{
+  "version": "brand-icons-v1",
+  "generated_at": "2026-05-23",
+  "size_px": 256,
+  "icons": [
+    {
+      "key": "whatsapp",
+      "label": "WhatsApp",
+      "brand_color": "#25D366",
+      "png": "icons/whatsapp.png",
+      "sha256": "5c80bd551160a6681747e7963cdd83b0642064f3fc36ff77df417f4c0f82a796",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons@16/icons/whatsapp.svg",
+      "license_note": "Simple Icons fallback; verify source/license from icon entry before public redistribution",
+      "fallback": false
+    },
+    {
+      "key": "signal",
+      "label": "Signal",
+      "brand_color": "#3A76F0",
+      "png": "icons/signal.png",
+      "sha256": "e986c752a77c2f136877ab615e8e6eacc2ca62de333f7598c9c79ff3319f1f4d",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons@16/icons/signal.svg",
+      "license_note": "Simple Icons fallback; verify source/license from icon entry before public redistribution",
+      "fallback": false
+    },
+    {
+      "key": "telegram",
+      "label": "Telegram",
+      "brand_color": "#229ED9",
+      "png": "icons/telegram.png",
+      "sha256": "d5a6bd84d293772980ca73165bcae576d756cefaf62bd47ed2c616ca68e4853b",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons@16/icons/telegram.svg",
+      "license_note": "Simple Icons fallback; verify source/license from icon entry before public redistribution",
+      "fallback": false
+    },
+    {
+      "key": "matrix",
+      "label": "Matrix",
+      "brand_color": "#000000",
+      "png": "icons/matrix.png",
+      "sha256": "bf4ccb80e8eddc3d837473a22ff91037e240e1f6235c5765fd94d0d73cd364ff",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons@16/icons/matrix.svg",
+      "license_note": "Simple Icons fallback; verify source/license from icon entry before public redistribution",
+      "fallback": false
+    },
+    {
+      "key": "email",
+      "label": "Email",
+      "brand_color": "#5F6368",
+      "png": "icons/email.png",
+      "sha256": "d0591b9c94ebf57ee25f841c8842b315f6c16c8a951b7c0d18181b79ca260c87",
+      "source": "local generated envelope glyph",
+      "license_note": "Local generic envelope glyph; not a brand mark",
+      "fallback": true
+    },
+    {
+      "key": "imessage",
+      "label": "iMessage",
+      "brand_color": "#34C759",
+      "png": "icons/imessage.png",
+      "sha256": "32c33391ef79b1f80526a9c03eb06233900ad5b34c7bd0e12a2b6c5be150c84d",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons@16/icons/imessage.svg",
+      "license_note": "Simple Icons fallback; verify source/license from icon entry before public redistribution",
+      "fallback": false
+    },
+    {
+      "key": "messenger",
+      "label": "Messenger",
+      "brand_color": "#0084FF",
+      "png": "icons/messenger.png",
+      "sha256": "ce701b0241d940067123472481109cea917a169a0653849db5049d3e96237641",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons@16/icons/messenger.svg",
+      "license_note": "Simple Icons fallback; verify source/license from icon entry before public redistribution",
+      "fallback": false
+    },
+    {
+      "key": "instagram",
+      "label": "Instagram",
+      "brand_color": "#E4405F",
+      "png": "icons/instagram.png",
+      "sha256": "65001ab4f065ca19059294c16f4f14bd7cc7378dce0fb3c08311f90a48465496",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons@16/icons/instagram.svg",
+      "license_note": "Simple Icons fallback; verify source/license from icon entry before public redistribution",
+      "fallback": false
+    },
+    {
+      "key": "discord",
+      "label": "Discord",
+      "brand_color": "#5865F2",
+      "png": "icons/discord.png",
+      "sha256": "b9688cf5174db38d1771ba15232ebdd80e1d2af8eb1d21f3a4512bf809ac6850",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons@16/icons/discord.svg",
+      "license_note": "Simple Icons fallback; verify source/license from icon entry before public redistribution",
+      "fallback": false
+    },
+    {
+      "key": "slack",
+      "label": "Slack",
+      "brand_color": "#4A154B",
+      "png": "icons/slack.png",
+      "sha256": "53e860a896afc837ac782544b2a5d75f6dd4b5d9aabbb3ab5917546888485e2f",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons/icons/slack.svg",
+      "license_note": "Simple Icons fallback; unversioned CDN retrieval pinned by local asset hash",
+      "fallback": false
+    },
+    {
+      "key": "x",
+      "label": "X",
+      "brand_color": "#111111",
+      "png": "icons/x.png",
+      "sha256": "ea1c3739b79277ed49a12dbd2426e05c0d4af7eda72fe856b1fe33d3f7869304",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons@16/icons/x.svg",
+      "license_note": "Simple Icons fallback; verify source/license from icon entry before public redistribution",
+      "fallback": false
+    },
+    {
+      "key": "linkedin",
+      "label": "LinkedIn",
+      "brand_color": "#0A66C2",
+      "png": "icons/linkedin.png",
+      "sha256": "3f928fa9437688d0cd62292daef7e78d18a037cafd3e42bea0f061fefe00e540",
+      "source": "https://cdn.jsdelivr.net/npm/simple-icons/icons/linkedin.svg",
+      "license_note": "Simple Icons fallback; unversioned CDN retrieval pinned by local asset hash",
+      "fallback": false
+    },
+    {
+      "key": "beeper",
+      "label": "Beeper",
+      "brand_color": "#111111",
+      "png": "icons/beeper.png",
+      "sha256": "f41d8900e87c14b5dc9a8050b6cbd5036cc395ea2b55376e8bdb85eb417e077c",
+      "source": "local generated Beeper-style stacked-card glyph",
+      "license_note": "Local fallback glyph until official reusable asset is confirmed",
+      "fallback": true
+    }
+  ]
+}

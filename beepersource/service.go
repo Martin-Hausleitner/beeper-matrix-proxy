@@ -427,28 +427,37 @@ func (s *Service) ensurePortal(ctx context.Context, chat Chat) (string, error) {
 }
 
 func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, error) {
+	if avatar, ok, err := s.contactOverrideAvatarForChat(chat); ok || err != nil {
+		if err != nil {
+			return avatar, err
+		}
+		return s.badgePortalAvatar(chat, avatar)
+	}
 	avatarURL, platformFallback := s.portalAvatarSource(chat)
 	lastAvatar, err := s.store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
 	if err != nil || (!s.cfg.Matrix.ForceAvatarSync && lastAvatar == avatarURL) {
 		return nil, err
 	}
 	if platformFallback {
-		return platformAvatarMedia(chat), nil
+		return generatedContactAvatarMedia(chat), nil
 	}
 	if avatar, ok, err := localAvatarMedia(avatarURL); ok || err != nil {
 		if err != nil {
 			return avatar, err
 		}
+		if avatar != nil {
+			avatar.AssetID = avatarURL
+		}
 		return s.badgePortalAvatar(chat, avatar)
 	}
 	asset, err := s.api.DownloadAsset(ctx, avatarURL)
 	if err != nil {
-		return platformAvatarMedia(chat), nil
+		return generatedContactAvatarMedia(chat), nil
 	}
 	body, err := io.ReadAll(asset.Content)
 	_ = asset.Content.Close()
 	if err != nil {
-		return platformAvatarMedia(chat), nil
+		return generatedContactAvatarMedia(chat), nil
 	}
 	fileName := firstNonEmpty(asset.FileName, "beeper-avatar")
 	mimeType := firstNonEmpty(asset.MimeType, "application/octet-stream")
@@ -471,13 +480,13 @@ func (s *Service) portalAvatarSource(chat Chat) (string, bool) {
 	if s.cfg.Matrix.PlatformAvatars {
 		return platformAvatarSyncValue(chat), true
 	}
-	if avatarURL := strings.TrimSpace(chat.AvatarURL); avatarURL != "" {
-		return s.resolveBeeperAssetURL(avatarURL), false
-	}
 	if s.cfg.Matrix.DMParticipantAvatars && !chat.IsGroup {
 		if avatarURL := firstParticipantAvatarURL(chat); avatarURL != "" {
 			return s.resolveBeeperAssetURL(avatarURL), false
 		}
+	}
+	if avatarURL := strings.TrimSpace(chat.AvatarURL); avatarURL != "" {
+		return s.resolveBeeperAssetURL(avatarURL), false
 	}
 	return platformAvatarSyncValue(chat), true
 }
@@ -577,7 +586,7 @@ func platformLogoSVG(platform string, bg string) string {
 }
 
 func platformAvatarSyncValue(chat Chat) string {
-	return "platform-logo-v3:" + PlatformDisplayName(chat)
+	return "platform-logo-v4:" + PlatformDisplayName(chat)
 }
 
 func localAvatarMedia(rawPath string) (*MatrixMedia, bool, error) {
@@ -655,6 +664,9 @@ func senderForMessage(chat Chat, msg Message) Sender {
 }
 
 func (s *Service) senderAvatarMedia(ctx context.Context, sender Sender) (*MatrixMedia, error) {
+	if avatar, ok, err := s.contactOverrideAvatarForSender(sender); ok || err != nil {
+		return avatar, err
+	}
 	avatarURL := s.resolveBeeperAssetURL(sender.AvatarID)
 	if avatarURL == "" {
 		return nil, nil

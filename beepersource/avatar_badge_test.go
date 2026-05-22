@@ -7,6 +7,7 @@ import (
 	"image/draw"
 	"image/png"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -30,8 +31,8 @@ func TestAddPlatformBadgeToAvatarOverlaysMessengerIcon(t *testing.T) {
 	if badged == avatar {
 		t.Fatal("expected a new media value for the composed avatar")
 	}
-	if badged.AssetID != avatar.AssetID {
-		t.Fatalf("expected asset id to stay stable, got %q", badged.AssetID)
+	if !strings.HasPrefix(badged.AssetID, "avatar-badge-v2:"+avatar.AssetID+":") {
+		t.Fatalf("expected v2 badge asset id, got %q", badged.AssetID)
 	}
 	if badged.MimeType != "image/png" {
 		t.Fatalf("expected PNG output, got %q", badged.MimeType)
@@ -88,6 +89,41 @@ func TestAddPlatformBadgeToAvatarKeepsUnsupportedInputUnchanged(t *testing.T) {
 	}
 	if badged.ContentHash != avatar.ContentHash {
 		t.Fatalf("expected unchanged content hash, got %q", badged.ContentHash)
+	}
+}
+
+func BenchmarkAddPlatformBadgeToAvatar(b *testing.B) {
+	img := image.NewRGBA(image.Rect(0, 0, 128, 128))
+	draw.Draw(img, img.Bounds(), &image.Uniform{C: color.RGBA{R: 40, G: 90, B: 170, A: 255}}, image.Point{}, draw.Src)
+	var originalBuf bytes.Buffer
+	if err := png.Encode(&originalBuf, img); err != nil {
+		b.Fatal(err)
+	}
+	original := originalBuf.Bytes()
+	chat := Chat{AccountID: "whatsapp", Network: "WhatsApp", Name: "Doris"}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		avatar := &MatrixMedia{
+			AssetID:     "avatar-asset",
+			ContentHash: "old-hash",
+			Content:     bytes.NewReader(original),
+			FileName:    "person.png",
+			MimeType:    "image/png",
+			SizeBytes:   int64(len(original)),
+		}
+		if _, err := addPlatformBadgeToAvatar(chat, avatar); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkGeneratedContactAvatarMedia(b *testing.B) {
+	chat := Chat{ID: "!chat:beeper", AccountID: "telegram", Network: "Telegram", Name: "No Photo"}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if generatedContactAvatarMedia(chat) == nil {
+			b.Fatal("missing generated avatar")
+		}
 	}
 }
 

@@ -11,3 +11,5 @@ beeper-matrix-proxy
 perf-results/
 matrix-archive-sync/target/
 matrix-archive/
+contact-avatar-overrides.yaml
+*-contact-avatar-overrides.yaml
