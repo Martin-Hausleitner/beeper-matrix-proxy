@@ -50,6 +50,16 @@ func TestConfigCanPreferPlatformAvatars(t *testing.T) {
 	}
 }
 
+func TestConfigCanDisableDMParticipantAvatars(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS", "false")
+
+	cfg := DefaultConfig()
+
+	if cfg.Matrix.DMParticipantAvatars {
+		t.Fatal("expected DM participant avatars to be disabled from env")
+	}
+}
+
 func TestConfigCanForceAvatarSync(t *testing.T) {
 	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC", "true")
 

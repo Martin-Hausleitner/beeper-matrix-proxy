@@ -426,24 +426,13 @@ func (s *Service) ensurePortal(ctx context.Context, chat Chat) (string, error) {
 }
 
 func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, error) {
-	if s.cfg.Matrix.PlatformAvatars {
-		lastAvatar, err := s.store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
-		if err != nil || (!s.cfg.Matrix.ForceAvatarSync && lastAvatar == platformAvatarSyncValue(chat)) {
-			return nil, err
-		}
-		return platformAvatarMedia(chat), nil
-	}
-	if chat.AvatarURL == "" {
-		lastAvatar, err := s.store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
-		if err != nil || (!s.cfg.Matrix.ForceAvatarSync && lastAvatar == platformAvatarSyncValue(chat)) {
-			return nil, err
-		}
-		return platformAvatarMedia(chat), nil
-	}
-	avatarURL := s.resolveBeeperAssetURL(chat.AvatarURL)
+	avatarURL, platformFallback := s.portalAvatarSource(chat)
 	lastAvatar, err := s.store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
 	if err != nil || (!s.cfg.Matrix.ForceAvatarSync && lastAvatar == avatarURL) {
 		return nil, err
+	}
+	if platformFallback {
+		return platformAvatarMedia(chat), nil
 	}
 	if avatar, ok, err := localAvatarMedia(avatarURL); ok || err != nil {
 		return avatar, err
@@ -465,10 +454,32 @@ func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, er
 }
 
 func (s *Service) portalAvatarSyncValue(chat Chat) string {
-	if s.cfg.Matrix.PlatformAvatars || strings.TrimSpace(chat.AvatarURL) == "" {
-		return platformAvatarSyncValue(chat)
+	avatarURL, _ := s.portalAvatarSource(chat)
+	return avatarURL
+}
+
+func (s *Service) portalAvatarSource(chat Chat) (string, bool) {
+	if s.cfg.Matrix.PlatformAvatars {
+		return platformAvatarSyncValue(chat), true
 	}
-	return s.resolveBeeperAssetURL(chat.AvatarURL)
+	if avatarURL := strings.TrimSpace(chat.AvatarURL); avatarURL != "" {
+		return s.resolveBeeperAssetURL(avatarURL), false
+	}
+	if s.cfg.Matrix.DMParticipantAvatars && !chat.IsGroup {
+		if avatarURL := firstParticipantAvatarURL(chat); avatarURL != "" {
+			return s.resolveBeeperAssetURL(avatarURL), false
+		}
+	}
+	return platformAvatarSyncValue(chat), true
+}
+
+func firstParticipantAvatarURL(chat Chat) string {
+	for _, participant := range chat.Participants {
+		if avatarURL := strings.TrimSpace(participant.AvatarID); avatarURL != "" {
+			return avatarURL
+		}
+	}
+	return ""
 }
 
 func (s *Service) resolveBeeperAssetURL(rawURL string) string {

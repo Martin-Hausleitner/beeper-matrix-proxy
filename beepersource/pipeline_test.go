@@ -334,6 +334,87 @@ func TestReconcileDownloadsChatAvatarForNewPortal(t *testing.T) {
 	}
 }
 
+func TestReconcileUsesParticipantAvatarForDirectPortalWithoutChatAvatar(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{
+			ID:        "!chat:beeper",
+			AccountID: "whatsapp",
+			Network:   "WhatsApp",
+			Name:      "Alice",
+			Participants: []Sender{{
+				ID:          "@alice:whatsapp",
+				DisplayName: "Alice",
+				AvatarID:    "localmxc://alice-avatar",
+			}},
+		}},
+		messages: map[string][]Message{"!chat:beeper": nil},
+		assets:   map[string]string{"localmxc://alice-avatar": "alice-avatar-bytes"},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+
+	if err := svc.ReconcilePortalsOnly(ctx); err != nil {
+		t.Fatalf("ReconcilePortalsOnly returned error: %v", err)
+	}
+	if len(api.downloadedAssets) != 1 || api.downloadedAssets[0] != "localmxc://alice-avatar" {
+		t.Fatalf("expected participant avatar download, got %#v", api.downloadedAssets)
+	}
+	if len(matrix.avatars) != 1 {
+		t.Fatalf("expected one participant portal avatar, got %d", len(matrix.avatars))
+	}
+	if matrix.avatars[0].AssetID != "localmxc://alice-avatar" {
+		t.Fatalf("expected participant avatar asset, got %#v", matrix.avatars[0])
+	}
+	syncValue, err := store.GetValue(ctx, portalAvatarSyncKey("!chat:beeper"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if syncValue != "localmxc://alice-avatar" {
+		t.Fatalf("expected participant avatar sync value, got %q", syncValue)
+	}
+}
+
+func TestReconcileUsesPlatformAvatarForDirectPortalWhenParticipantAvatarsDisabled(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{
+			ID:        "!chat:beeper",
+			AccountID: "whatsapp",
+			Network:   "WhatsApp",
+			Name:      "Alice",
+			Participants: []Sender{{
+				ID:          "@alice:whatsapp",
+				DisplayName: "Alice",
+				AvatarID:    "localmxc://alice-avatar",
+			}},
+		}},
+		messages: map[string][]Message{"!chat:beeper": nil},
+		assets:   map[string]string{"localmxc://alice-avatar": "alice-avatar-bytes"},
+	}
+	matrix := &fakeMatrixSink{}
+	cfg := DefaultConfig()
+	cfg.Matrix.DMParticipantAvatars = false
+	svc := NewService(cfg, store, api, matrix)
+
+	if err := svc.ReconcilePortalsOnly(ctx); err != nil {
+		t.Fatalf("ReconcilePortalsOnly returned error: %v", err)
+	}
+	if len(api.downloadedAssets) != 0 {
+		t.Fatalf("expected no participant avatar download, got %#v", api.downloadedAssets)
+	}
+	if len(matrix.avatars) != 1 {
+		t.Fatalf("expected one platform avatar, got %d", len(matrix.avatars))
+	}
+	if matrix.avatars[0].AssetID != platformAvatarSyncValue(api.chats[0]) {
+		t.Fatalf("expected platform avatar fallback, got %#v", matrix.avatars[0])
+	}
+}
+
 func TestReconcileAddsParticipantAvatarToPerMessageProfile(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
@@ -343,6 +424,7 @@ func TestReconcileAddsParticipantAvatarToPerMessageProfile(t *testing.T) {
 			ID:        "!chat:beeper",
 			AccountID: "signal",
 			Name:      "Participant Avatar Test",
+			IsGroup:   true,
 			Participants: []Sender{{
 				ID:          "@alice:signal",
 				DisplayName: "Alice",

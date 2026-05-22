@@ -68,14 +68,15 @@ Latest local archive evidence from 2026-05-22:
 |---|---:|
 | Matrix rooms in archive | 868 |
 | Rooms with refreshed names | 868 |
-| Rooms with Matrix avatar state | 831 |
-| Matrix events archived | 44,360 |
+| Rooms with Matrix avatar state | 835 |
+| Matrix events archived | 44,761 |
 | Sender profile avatar refs | 3,791/3,791 downloaded |
-| Downloaded media objects | 2,229 |
+| Beeper portal room avatars | 524 chat/person avatars, 303 service fallbacks |
+| Downloaded media objects | 2,269 |
 | Media refs missing an object | 0 |
 | Explicit gaps | 515 documented gaps |
-| Archive size in OneDrive | 741 MB |
-| Latest restic snapshot | 502 MB processed, repository check clean |
+| Archive size in OneDrive | 760 MB |
+| Latest restic snapshot | 217 MB processed, repository check clean |
 
 `sync --refresh-room-state` fetches `/joined_rooms` and each room's current
 `/state`, so room names, service spaces, and `m.room.avatar` state are backed up
@@ -157,7 +158,7 @@ anything back to real Beeper contacts:
 export BEEPER_MATRIX_PROXY_SYNC_MODE=read_only
 export BEEPER_MATRIX_PROXY_DISABLE_MATRIX_TO_BEEPER=true
 # rooms-only enables Matrix Spaces automatically, omits duplicate Beeper/service prefixes,
-# and keeps Beeper chat avatars preferred
+# and keeps Beeper chat/person avatars preferred
 export BEEPER_MATRIX_PROXY_PORTAL_WORKERS=8
 export BEEPER_MATRIX_PROXY_PORTAL_TIMEOUT_SECONDS=180
 # Optional: explicitly restore a custom room-name prefix
@@ -193,7 +194,10 @@ every portal room to use the messenger logo instead of the Beeper/BIPA chat
 profile picture. With the default setting, Beeper `imgURL` avatars are fully
 downloaded through the Desktop API, including relative BIPA asset URLs resolved
 against `BEEPER_MATRIX_PROXY_BEEPER_BASE_URL`; platform logos are used only as a
-fallback when no chat avatar exists.
+fallback when no chat avatar exists. For direct chats where Beeper exposes no
+chat-level `imgURL`, `BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS=true`
+uses an available participant Beeper avatar as the Matrix room avatar; set it to
+`false` to keep the service-logo fallback for those rooms.
 
 To import reachable Beeper message history into those Matrix portal rooms
 without sending anything back to real contacts, run the read-only history

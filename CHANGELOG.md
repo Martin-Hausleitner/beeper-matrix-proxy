@@ -86,6 +86,10 @@ public `main` branch.
 - Relative Beeper/BIPA avatar asset URLs are resolved against
   `BEEPER_MATRIX_PROXY_BEEPER_BASE_URL` before download, so rooms can use the
   full chat/person profile picture when Beeper exposes one.
+- Direct Beeper/BIPA portal rooms now use participant profile pictures as the
+  Matrix room avatar when the chat itself has no `imgURL`; set
+  `BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS=false` to keep service-logo
+  fallbacks for those rooms.
 - Rooms-only imports now refresh existing portal room names, topics, and
   avatars instead of only creating missing portals; this keeps idempotent
   re-runs useful after config changes.
