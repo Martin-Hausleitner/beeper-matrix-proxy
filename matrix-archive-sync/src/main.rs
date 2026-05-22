@@ -32,6 +32,11 @@ async fn main() -> Result<()> {
             let archiver = Archiver::new(client, store, cli.archive_dir);
             archiver.backfill(args).await
         }
+        Command::RepairMedia(args) => {
+            let client = MatrixClient::from_options(args.matrix.clone(), args.insecure_tls)?;
+            let archiver = Archiver::new(client, store, cli.archive_dir);
+            archiver.repair_media_refs(args).await
+        }
         Command::ExportHtml(args) => export_html(&store, &cli.archive_dir, &args.output_dir),
         Command::ExportJsonl(args) => export_jsonl(&store, &args.output),
         Command::Snapshot(args) => create_snapshot(&store, &cli.archive_dir, &args.output_dir),

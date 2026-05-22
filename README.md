@@ -66,22 +66,25 @@ Latest local archive evidence from 2026-05-22:
 
 | Check | Result |
 |---|---:|
-| Matrix rooms in archive | 864 |
-| Rooms with refreshed names | 864 |
+| Matrix rooms in archive | 868 |
+| Rooms with refreshed names | 868 |
 | Rooms with Matrix avatar state | 831 |
-| Matrix events archived | 31,938 |
-| Media references | 2,876 |
-| Downloaded media objects | 1,167 |
+| Matrix events archived | 44,360 |
+| Sender profile avatar refs | 3,791/3,791 downloaded |
+| Downloaded media objects | 2,229 |
 | Media refs missing an object | 0 |
-| Explicit gaps | 359 limited timelines |
-| Archive size in OneDrive | 420 MB |
-| Latest restic snapshot | 288 MB processed, repository check clean |
+| Explicit gaps | 515 documented gaps |
+| Archive size in OneDrive | 741 MB |
+| Latest restic snapshot | 502 MB processed, repository check clean |
 
 `sync --refresh-room-state` fetches `/joined_rooms` and each room's current
 `/state`, so room names, service spaces, and `m.room.avatar` state are backed up
 even when an incremental `/sync` response omits old state events. The snapshot
 command writes a restic-ready `snapshot/archive.sqlite` plus `manifest.json`
 that points at the content-addressed media objects included in the backup.
+`repair-media --download-media` can re-scan already stored raw events when a new
+media extractor is added; it is used for Beeper per-message profile avatars so
+the static HTML archive shows sender photos offline.
 
 ## Beeper Source Mode
 

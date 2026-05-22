@@ -7,9 +7,9 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::time::sleep;
 
-use crate::cli::{BackfillArgs, SyncArgs};
+use crate::cli::{BackfillArgs, RepairMediaArgs, SyncArgs};
 use crate::matrix::MatrixClient;
-use crate::media::{extract_mxc_references, sha256_hex, MediaStore};
+use crate::media::{extract_mxc_references, sha256_hex, MediaStore, MxcReference};
 use crate::store::{ArchiveStore, EventRecord, GapRecord, MediaRefRecord, RoomRecord};
 
 pub struct Archiver {
@@ -86,6 +86,21 @@ impl Archiver {
                     }
                 }
                 batches += 1;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn repair_media_refs(&self, args: RepairMediaArgs) -> Result<()> {
+        for event in self.store.all_events()? {
+            for media_ref in extract_mxc_references(&event.raw_event) {
+                self.ingest_media_ref(
+                    &event.room_id,
+                    &event.event_id,
+                    &media_ref,
+                    args.download_media,
+                )
+                .await?;
             }
         }
         Ok(())
@@ -219,40 +234,8 @@ impl Archiver {
 
         let media_refs = extract_mxc_references(event);
         for media_ref in media_refs {
-            self.store.insert_media_ref(&MediaRefRecord {
-                event_id: event_id.to_owned(),
-                field_path: media_ref.field_path.clone(),
-                mxc_uri: media_ref.mxc_uri.clone(),
-                object_hash: None,
-                mimetype: None,
-                original_filename: None,
-                encrypted_file_json: media_ref.encrypted_file_json.clone(),
-            })?;
-            if download_media {
-                match self.client.download_media(&media_ref.mxc_uri).await {
-                    Ok(downloaded) => {
-                        let hash = sha256_hex(&downloaded.bytes);
-                        let stored = self.media_store.store(&downloaded)?;
-                        self.store.insert_media_object(
-                            &stored.hash,
-                            stored.size,
-                            downloaded.mimetype.as_deref(),
-                            None,
-                            &stored.relative_path,
-                        )?;
-                        self.store
-                            .set_media_object_for_mxc(&media_ref.mxc_uri, &hash)?;
-                    }
-                    Err(err) => {
-                        self.store.record_gap(&GapRecord {
-                            room_id: Some(room_id.to_owned()),
-                            event_id: Some(event_id.to_owned()),
-                            kind: "media_unavailable".into(),
-                            detail: format!("{}: {}", media_ref.mxc_uri, err),
-                        })?;
-                    }
-                }
-            }
+            self.ingest_media_ref(room_id, event_id, &media_ref, download_media)
+                .await?;
         }
         if record.is_encrypted {
             self.store.record_gap(&GapRecord {
@@ -261,6 +244,52 @@ impl Archiver {
                 kind: "undecrypted_e2ee".into(),
                 detail: "raw m.room.encrypted event stored; plaintext unavailable in v1".into(),
             })?;
+        }
+        Ok(())
+    }
+
+    async fn ingest_media_ref(
+        &self,
+        room_id: &str,
+        event_id: &str,
+        media_ref: &MxcReference,
+        download_media: bool,
+    ) -> Result<()> {
+        let existing_hash = self.store.media_object_hash_for_mxc(&media_ref.mxc_uri)?;
+        self.store.insert_media_ref(&MediaRefRecord {
+            event_id: event_id.to_owned(),
+            field_path: media_ref.field_path.clone(),
+            mxc_uri: media_ref.mxc_uri.clone(),
+            object_hash: existing_hash.clone(),
+            mimetype: None,
+            original_filename: None,
+            encrypted_file_json: media_ref.encrypted_file_json.clone(),
+        })?;
+        if !download_media || existing_hash.is_some() {
+            return Ok(());
+        }
+        match self.client.download_media(&media_ref.mxc_uri).await {
+            Ok(downloaded) => {
+                let hash = sha256_hex(&downloaded.bytes);
+                let stored = self.media_store.store(&downloaded)?;
+                self.store.insert_media_object(
+                    &stored.hash,
+                    stored.size,
+                    downloaded.mimetype.as_deref(),
+                    None,
+                    &stored.relative_path,
+                )?;
+                self.store
+                    .set_media_object_for_mxc(&media_ref.mxc_uri, &hash)?;
+            }
+            Err(err) => {
+                self.store.record_gap(&GapRecord {
+                    room_id: Some(room_id.to_owned()),
+                    event_id: Some(event_id.to_owned()),
+                    kind: "media_unavailable".into(),
+                    detail: format!("{}: {}", media_ref.mxc_uri, err),
+                })?;
+            }
         }
         Ok(())
     }

@@ -60,6 +60,12 @@ pub fn extract_mxc_references(event: &Value) -> Vec<MxcReference> {
     let content = event.get("content").unwrap_or(&Value::Null);
     push_mxc(&mut refs, content, "content.url");
     push_mxc(&mut refs, content, "content.thumbnail_url");
+    push_nested_mxc(
+        &mut refs,
+        content,
+        &["com.beeper.per_message_profile", "avatar_url"],
+        "content.com.beeper.per_message_profile.avatar_url",
+    );
     push_encrypted_mxc(&mut refs, content, "content.file");
     push_encrypted_mxc(&mut refs, content, "content.thumbnail_file");
     refs
@@ -74,6 +80,25 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 fn push_mxc(refs: &mut Vec<MxcReference>, content: &Value, field_path: &str) {
     let key = field_path.rsplit('.').next().unwrap_or(field_path);
     if let Some(mxc_uri) = content.get(key).and_then(Value::as_str) {
+        if mxc_uri.starts_with("mxc://") {
+            refs.push(MxcReference {
+                field_path: field_path.to_owned(),
+                mxc_uri: mxc_uri.to_owned(),
+                encrypted_file_json: None,
+            });
+        }
+    }
+}
+
+fn push_nested_mxc(refs: &mut Vec<MxcReference>, content: &Value, keys: &[&str], field_path: &str) {
+    let mut value = content;
+    for key in keys {
+        let Some(next) = value.get(*key) else {
+            return;
+        };
+        value = next;
+    }
+    if let Some(mxc_uri) = value.as_str() {
         if mxc_uri.starts_with("mxc://") {
             refs.push(MxcReference {
                 field_path: field_path.to_owned(),
@@ -114,14 +139,21 @@ mod tests {
         let event = serde_json::json!({
             "content": {
                 "url": "mxc://server/plain",
+                "com.beeper.per_message_profile": {
+                    "avatar_url": "mxc://server/avatar"
+                },
                 "thumbnail_file": {"url": "mxc://server/thumb", "key": {"k": "secret"}}
             }
         });
         let refs = extract_mxc_references(&event);
-        assert_eq!(refs.len(), 2);
+        assert_eq!(refs.len(), 3);
         assert_eq!(refs[0].field_path, "content.url");
-        assert_eq!(refs[1].field_path, "content.thumbnail_file");
-        assert!(refs[1].encrypted_file_json.is_some());
+        assert_eq!(
+            refs[1].field_path,
+            "content.com.beeper.per_message_profile.avatar_url"
+        );
+        assert_eq!(refs[2].field_path, "content.thumbnail_file");
+        assert!(refs[2].encrypted_file_json.is_some());
     }
 
     #[test]

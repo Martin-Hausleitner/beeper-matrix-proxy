@@ -33,6 +33,8 @@ pub enum Command {
     ExportJsonl(ExportJsonlArgs),
     /// Create a consistent DB snapshot and media manifest for restic/borg/kopia.
     Snapshot(SnapshotArgs),
+    /// Re-scan stored raw events for newly supported media references.
+    RepairMedia(RepairMediaArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -99,4 +101,16 @@ pub struct ExportJsonlArgs {
 pub struct SnapshotArgs {
     #[arg(long, default_value = "matrix-archive/snapshot")]
     pub output_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct RepairMediaArgs {
+    #[command(flatten)]
+    pub matrix: MatrixOptions,
+
+    #[arg(long, default_value_t = false)]
+    pub download_media: bool,
+
+    #[arg(long, default_value_t = false)]
+    pub insecure_tls: bool,
 }

@@ -31,6 +31,9 @@ public `main` branch.
 - Matrix archive snapshots now write the canonical restic input database as
   `snapshot/archive.sqlite` and remove stale legacy snapshot files before
   generating the media manifest.
+- Matrix archive export now extracts Beeper per-message profile avatar MXC
+  URLs, can repair existing archives with `repair-media --download-media`, and
+  renders sender avatar images in the offline HTML timeline.
 - Matrix message events emitted by `beeper-source` include
   `com.openclaw.beeper.source` metadata with source chat/message/account and
   attachment identifiers; the full raw Beeper sidecar DB is included in the

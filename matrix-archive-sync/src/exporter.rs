@@ -8,6 +8,8 @@ use serde::Serialize;
 
 use crate::store::{ArchiveStore, EventRecord, MediaRefRecord, RoomRecord};
 
+const BEEPER_PROFILE_AVATAR_FIELD: &str = "content.com.beeper.per_message_profile.avatar_url";
+
 pub fn export_jsonl(store: &ArchiveStore, output: &Path) -> Result<()> {
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
@@ -65,6 +67,10 @@ pub fn export_html(store: &ArchiveStore, archive_dir: &Path, output_dir: &Path) 
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; line-height: 1.45; }
         main { max-width: 980px; }
         article { border-bottom: 1px solid #ddd; padding: .75rem 0; }
+        .event-head { display: flex; gap: .65rem; align-items: flex-start; }
+        .sender-avatar { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 34px; object-fit: cover; background: #ececec; color: #555; display: grid; place-items: center; font-weight: 700; font-size: .85rem; overflow: hidden; }
+        .sender-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .event-content { min-width: 0; flex: 1; }
         .meta { color: #666; font-size: .9rem; }
         .marker { display: inline-block; border: 1px solid #bbb; border-radius: 4px; padding: 0 .25rem; margin-left: .25rem; color: #555; font-size: .8rem; }
         .body { white-space: pre-wrap; margin-top: .35rem; }
@@ -91,10 +97,16 @@ fn render_event(
 ) -> Result<()> {
     html.push_str("<article id=\"");
     html.push_str(&encode_text(&event.event_id));
-    html.push_str("\"><div class=\"meta\">");
-    html.push_str(&encode_text(
-        event.sender.as_deref().unwrap_or("unknown sender"),
-    ));
+    html.push_str("\"><div class=\"event-head\">");
+    render_sender_avatar(html, archive_dir, output_dir, event, media_refs)?;
+    html.push_str("<div class=\"event-content\"><div class=\"meta\">");
+    let profile = beeper_profile(event);
+    let sender_label = profile
+        .display_name
+        .as_deref()
+        .or(event.sender.as_deref())
+        .unwrap_or("unknown sender");
+    html.push_str(&encode_text(sender_label));
     html.push_str(" · ");
     html.push_str(&encode_text(&timestamp_label(event.origin_server_ts)));
     html.push_str(" · ");
@@ -123,7 +135,10 @@ fn render_event(
             "<div class=\"media\"><span class=\"marker\">redacted media hidden</span></div>",
         );
     }
-    for media_ref in media_refs.iter().filter(|_| !event.is_redacted) {
+    for media_ref in media_refs
+        .iter()
+        .filter(|media_ref| !event.is_redacted && !is_sender_avatar_ref(media_ref))
+    {
         html.push_str("<div class=\"media\">");
         if let Some(object_hash) = &media_ref.object_hash {
             let relative = object_relative_link(archive_dir, output_dir, object_hash)?;
@@ -134,8 +149,78 @@ fn render_event(
         }
         html.push_str("</div>");
     }
-    html.push_str("</article>");
+    html.push_str("</div></div></article>");
     Ok(())
+}
+
+fn render_sender_avatar(
+    html: &mut String,
+    archive_dir: &Path,
+    output_dir: &Path,
+    event: &EventRecord,
+    media_refs: &[MediaRefRecord],
+) -> Result<()> {
+    let profile = beeper_profile(event);
+    let label = profile
+        .display_name
+        .as_deref()
+        .or(event.sender.as_deref())
+        .unwrap_or("?");
+    let avatar_ref = media_refs
+        .iter()
+        .find(|media_ref| is_sender_avatar_ref(media_ref) && media_ref.object_hash.is_some());
+    html.push_str("<div class=\"sender-avatar\" title=\"");
+    html.push_str(&encode_double_quoted_attribute(label));
+    html.push_str("\">");
+    if let Some(media_ref) = avatar_ref {
+        if let Some(object_hash) = &media_ref.object_hash {
+            let relative = object_relative_link(archive_dir, output_dir, object_hash)?;
+            let href = encode_double_quoted_attribute(&relative);
+            html.push_str("<img loading=\"lazy\" src=\"");
+            html.push_str(&href);
+            html.push_str("\" alt=\"");
+            html.push_str(&encode_double_quoted_attribute(label));
+            html.push_str("\">");
+        }
+    } else {
+        html.push_str(&encode_text(&avatar_initials(label)));
+    }
+    html.push_str("</div>");
+    Ok(())
+}
+
+#[derive(Default)]
+struct BeeperProfile {
+    display_name: Option<String>,
+}
+
+fn beeper_profile(event: &EventRecord) -> BeeperProfile {
+    let Some(profile) = event
+        .raw_event
+        .get("content")
+        .and_then(|content| content.get("com.beeper.per_message_profile"))
+    else {
+        return BeeperProfile::default();
+    };
+    BeeperProfile {
+        display_name: profile
+            .get("displayname")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+    }
+}
+
+fn is_sender_avatar_ref(media_ref: &MediaRefRecord) -> bool {
+    media_ref.field_path == BEEPER_PROFILE_AVATAR_FIELD
+}
+
+fn avatar_initials(label: &str) -> String {
+    label
+        .split_whitespace()
+        .filter_map(|part| part.chars().next())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase()
 }
 
 fn render_media_object(
@@ -389,6 +474,76 @@ mod tests {
         assert!(html.contains("<img loading=\"lazy\""));
         assert!(html.contains("alt=\"photo.png\""));
         assert!(html.contains("../objects/sha256/bb/bb/"));
+        Ok(())
+    }
+
+    #[test]
+    fn html_export_renders_beeper_sender_avatar() -> Result<()> {
+        let dir = tempdir()?;
+        let store = ArchiveStore::open(dir.path())?;
+        store.upsert_room(&RoomRecord {
+            room_id: "!room:local".into(),
+            name: Some("Room".into()),
+            canonical_alias: None,
+            avatar_mxc: None,
+            joined_at: Some(0),
+            last_prev_batch: None,
+            backfill_token: None,
+            backfill_done: true,
+        })?;
+        store.insert_event(&EventRecord {
+            event_id: "$profile".into(),
+            room_id: "!room:local".into(),
+            origin_server_ts: Some(0),
+            sender: Some("@bridge:local".into()),
+            event_type: "m.room.message".into(),
+            state_key: None,
+            msgtype: Some("m.text".into()),
+            relates_to_event_id: None,
+            relation_type: None,
+            redacts_event_id: None,
+            is_encrypted: false,
+            is_redacted: false,
+            body_text: Some("hello".into()),
+            formatted_body_html: None,
+            raw_event: serde_json::json!({
+                "event_id": "$profile",
+                "content": {
+                    "com.beeper.per_message_profile": {
+                        "displayname": "Alice Example",
+                        "avatar_url": "mxc://server/avatar"
+                    }
+                }
+            }),
+            decrypted_event: None,
+            canonical_sha256: "hash".into(),
+            received_at: 0,
+            source_batch: "test".into(),
+        })?;
+        let object_hash = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        store.insert_media_object(
+            object_hash,
+            12,
+            Some("image/png"),
+            Some("avatar.png"),
+            "objects/sha256/cc/cc/object",
+        )?;
+        store.insert_media_ref(&MediaRefRecord {
+            event_id: "$profile".into(),
+            field_path: BEEPER_PROFILE_AVATAR_FIELD.into(),
+            mxc_uri: "mxc://server/avatar".into(),
+            object_hash: Some(object_hash.into()),
+            mimetype: None,
+            original_filename: None,
+            encrypted_file_json: None,
+        })?;
+        let out = dir.path().join("html");
+        export_html(&store, dir.path(), &out)?;
+        let html = fs::read_to_string(out.join("rooms").join("_room_local.html"))?;
+        assert!(html.contains("class=\"sender-avatar\""));
+        assert!(html.contains("alt=\"Alice Example\""));
+        assert!(html.contains(">Alice Example · "));
+        assert!(!html.contains("mxc://server/avatar"));
         Ok(())
     }
 }

@@ -479,6 +479,17 @@ impl ArchiveStore {
             .map_err(Into::into)
     }
 
+    pub fn media_object_hash_for_mxc(&self, mxc_uri: &str) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT object_hash FROM media_refs WHERE mxc_uri=? AND object_hash IS NOT NULL LIMIT 1",
+                [mxc_uri],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn media_objects(&self) -> Result<Vec<(String, i64, String)>> {
         let mut stmt = self.conn.prepare(
             "SELECT object_hash, size, storage_path FROM media_objects ORDER BY object_hash",
