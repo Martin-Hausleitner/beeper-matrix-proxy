@@ -108,6 +108,7 @@ func exitIfErr(label string, err error) {
 func applyRoomsOnlySafety(cfg *beepersource.Config) {
 	cfg.Sync.Mode = beepersource.SyncModeReadOnly
 	cfg.Safety.DisableMatrixToBeeper = true
+	appendExcludedAccountIDs(cfg, "sh-vcvm-matrix", "matrix", "beeper-matrix-proxy")
 	if _, explicit := os.LookupEnv("BEEPER_MATRIX_PROXY_MATRIX_SPACES"); !explicit {
 		cfg.Matrix.Spaces = true
 	}
@@ -120,7 +121,23 @@ func applyRoomsOnlySafety(cfg *beepersource.Config) {
 func applyBackfillHistorySafety(cfg *beepersource.Config) {
 	cfg.Sync.Mode = beepersource.SyncModeReadOnly
 	cfg.Safety.DisableMatrixToBeeper = true
-	if _, explicit := os.LookupEnv("BEEPER_MATRIX_PROXY_EXCLUDE_ACCOUNT_IDS"); !explicit {
-		cfg.Beeper.ExcludeAccountIDs = []string{"beeper-matrix-proxy"}
+	appendExcludedAccountIDs(cfg, "sh-vcvm-matrix", "matrix", "beeper-matrix-proxy")
+}
+
+func appendExcludedAccountIDs(cfg *beepersource.Config, accountIDs ...string) {
+	for _, accountID := range accountIDs {
+		if accountID == "" {
+			continue
+		}
+		seen := false
+		for _, existing := range cfg.Beeper.ExcludeAccountIDs {
+			if existing == accountID {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			cfg.Beeper.ExcludeAccountIDs = append(cfg.Beeper.ExcludeAccountIDs, accountID)
+		}
 	}
 }

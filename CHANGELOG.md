@@ -78,6 +78,9 @@ public `main` branch.
   Matrix -> Beeper sends regardless of the surrounding environment. It also
   enables Matrix Spaces for the all-chat Cinny import while keeping real
   Beeper/BIPA chat avatars preferred over platform-logo room avatars.
+- Rooms-only and Beeper-history backfills now exclude Matrix bridge/source
+  accounts (`sh-vcvm-matrix`, `matrix`, and `beeper-matrix-proxy`) by default
+  so local backup/portal rooms do not reappear as duplicate Beeper chats.
 - `BEEPER_MATRIX_PROXY_MATRIX_ROOM_INCLUDE_PLATFORM` controls whether portal
   room names include bracketed service names such as `[Telegram]`; rooms-only
   mode disables the bracket and clears the default `Beeper: ` prefix because

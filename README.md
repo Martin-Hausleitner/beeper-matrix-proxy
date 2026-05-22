@@ -206,15 +206,15 @@ backfill:
 ```bash
 export BEEPER_MATRIX_PROXY_SYNC_MODE=read_only
 export BEEPER_MATRIX_PROXY_DISABLE_MATRIX_TO_BEEPER=true
-export BEEPER_MATRIX_PROXY_EXCLUDE_ACCOUNT_IDS=beeper-matrix-proxy
+export BEEPER_MATRIX_PROXY_EXCLUDE_ACCOUNT_IDS=sh-vcvm-matrix,matrix,beeper-matrix-proxy
 
 go run ./cmd/beeper-source -db beeper-source-all-chats.db -once -backfill-history -history-chat-limit 20
 ```
 
 The backfill is resumable. It stores a per-chat `oldestCursor`, skips already
-mapped Beeper message IDs, and excludes the local target Matrix bridge account
-by default in `-backfill-history` mode to avoid feeding newly-created portal
-rooms back into the Beeper source list.
+mapped Beeper message IDs, and excludes Matrix bridge/source accounts by default
+in rooms-only and `-backfill-history` modes to avoid feeding newly-created
+portal or backup rooms back into the Beeper source list.
 
 For durability beyond native Matrix `/sync`, the backfill also stores raw Beeper
 Desktop API message JSON in SQLite and mirrors every Beeper attachment as Matrix
