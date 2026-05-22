@@ -436,7 +436,10 @@ func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, er
 		return platformAvatarMedia(chat), nil
 	}
 	if avatar, ok, err := localAvatarMedia(avatarURL); ok || err != nil {
-		return avatar, err
+		if err != nil {
+			return avatar, err
+		}
+		return s.badgePortalAvatar(chat, avatar)
 	}
 	asset, err := s.api.DownloadAsset(ctx, avatarURL)
 	if err != nil {
@@ -449,14 +452,14 @@ func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, er
 	}
 	fileName := firstNonEmpty(asset.FileName, "beeper-avatar")
 	mimeType := firstNonEmpty(asset.MimeType, "application/octet-stream")
-	return &MatrixMedia{
+	return s.badgePortalAvatar(chat, &MatrixMedia{
 		AssetID:     avatarURL,
 		ContentHash: fmt.Sprintf("%x", sha256.Sum256(body)),
 		Content:     bytes.NewReader(body),
 		FileName:    fileName,
 		MimeType:    mimeType,
 		SizeBytes:   int64(len(body)),
-	}, nil
+	})
 }
 
 func (s *Service) portalAvatarSyncValue(chat Chat) string {

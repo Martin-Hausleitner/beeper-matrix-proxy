@@ -60,6 +60,16 @@ func TestConfigCanDisableDMParticipantAvatars(t *testing.T) {
 	}
 }
 
+func TestConfigCanDisableAvatarBadges(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES", "false")
+
+	cfg := DefaultConfig()
+
+	if cfg.Matrix.AvatarBadges {
+		t.Fatal("expected room avatar badges to be disabled from env")
+	}
+}
+
 func TestConfigCanForceAvatarSync(t *testing.T) {
 	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC", "true")
 

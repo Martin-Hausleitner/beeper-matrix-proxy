@@ -53,6 +53,10 @@ public `main` branch.
 - Beeper chat avatar mirroring into Matrix portal room icons, including local
   Beeper media paths, `file://` paths, remote asset downloads, and refreshes for
   already-created rooms.
+- `BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES=true` composes a small messenger
+  badge into real Beeper/BIPA chat or participant avatars, so Cinny and Element
+  can show both the person/profile picture and the service marker through the
+  standard Matrix `m.room.avatar` field.
 - `cmd/beeper-source -rooms-only` to create/update Matrix rooms for all Beeper
   chats without importing message history or enabling Matrix -> Beeper sends.
 - Paginated Beeper chat discovery via `/v1/chats`, so all chats are considered

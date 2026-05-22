@@ -128,7 +128,7 @@ Current `beeper-source` implementation status:
 | Matrix -> Beeper text/media core | Supported | Matrix `/sync` reader forwards user text and Matrix media from portal rooms to Beeper with stored sync tokens. |
 | Matrix -> Beeper edits/deletes/reactions | Supported | Live-tested in the Signal test group through Beeper Desktop API update/delete/reaction endpoints. |
 | Cinny visibility | Supported | Verified in Cinny v4.11.1: WhatsApp, Signal, and Matrix test rooms appear as Matrix rooms. |
-| Beeper chat avatars -> Matrix room icons | Supported | Beeper `imgURL`/asset avatars are uploaded to Matrix and refreshed on existing portal rooms. |
+| Beeper chat avatars -> Matrix room icons | Supported | Beeper `imgURL`/asset avatars are uploaded to Matrix and refreshed on existing portal rooms; by default room avatars keep the real chat/person picture and add a small messenger badge for Cinny/Element. |
 | All active Beeper chats in Matrix/Cinny | Supported | `cmd/beeper-source -rooms-only` creates/updates portal rooms for every non-archived Beeper chat without importing history or sending to contacts. Archived chats can be opted in. |
 | Platform names/icons | Supported | Rooms-only mode groups rooms into Matrix Spaces per Beeper `network` (`WhatsApp`, `Signal`, `Telegram`, etc.); generated platform PNG logos are cached once per service for the service spaces and as a room-avatar fallback when a chat has no Beeper `imgURL`. |
 | Matrix Spaces by messenger | Supported | Rooms-only import creates a Beeper root space and top-level service spaces for WhatsApp, Signal, Telegram, bridgev2, and Beeper(Matrix), then links portal rooms under the matching service. |
@@ -203,6 +203,11 @@ fallback when no chat avatar exists. For direct chats where Beeper exposes no
 chat-level `imgURL`, `BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS=true`
 uses an available participant Beeper avatar as the Matrix room avatar; set it to
 `false` to keep the service-logo fallback for those rooms.
+`BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES=true` is enabled by default and
+composes a small messenger badge into real chat/person room avatars. Because the
+badge is written into the normal Matrix `m.room.avatar` media, Cinny and Element
+show the service marker without any client patch. Set it to `false` if you want
+unmodified Beeper/BIPA avatar images only.
 
 To import reachable Beeper message history into those Matrix portal rooms
 without sending anything back to real contacts, run the read-only history
