@@ -35,7 +35,9 @@ type MatrixConfig struct {
 	PrefixSender               bool
 	PlatformAvatars            bool
 	DMParticipantAvatars       bool
+	AvatarClientProfile        string
 	AvatarBadges               bool
+	AvatarFallbackBadges       bool
 	AvatarBadgeConfigPath      string
 	AvatarBadgePosition        string
 	AvatarBadgeLayout          string
@@ -57,12 +59,14 @@ type MatrixConfig struct {
 
 type avatarBadgeConfigFile struct {
 	AvatarBadge struct {
-		Position     string `yaml:"position"`
-		Layout       string `yaml:"layout"`
-		Shape        string `yaml:"shape"`
-		SizePercent  *int   `yaml:"size_percent"`
-		InsetPercent *int   `yaml:"inset_percent"`
-		Shadow       *bool  `yaml:"shadow"`
+		ClientProfile  string `yaml:"client_profile"`
+		FallbackBadges *bool  `yaml:"fallback_badges"`
+		Position       string `yaml:"position"`
+		Layout         string `yaml:"layout"`
+		Shape          string `yaml:"shape"`
+		SizePercent    *int   `yaml:"size_percent"`
+		InsetPercent   *int   `yaml:"inset_percent"`
+		Shadow         *bool  `yaml:"shadow"`
 	} `yaml:"avatar_badge"`
 	GroupAvatar struct {
 		Style           string   `yaml:"style"`
@@ -109,7 +113,9 @@ func DefaultConfig() Config {
 			PrefixSender:               envBool("BEEPER_MATRIX_PROXY_MATRIX_PREFIX_SENDER", true),
 			PlatformAvatars:            envBool("BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS", false),
 			DMParticipantAvatars:       envBool("BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS", true),
+			AvatarClientProfile:        envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE", "cinny"),
 			AvatarBadges:               envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES", true),
+			AvatarFallbackBadges:       envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_FALLBACK_BADGES", true),
 			AvatarBadgeConfigPath:      envString("BEEPER_MATRIX_PROXY_AVATAR_BADGE_CONFIG", ""),
 			AvatarBadgePosition:        envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_POSITION", "bottom-right"),
 			AvatarBadgeLayout:          envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_LAYOUT", "circle-safe"),
@@ -155,7 +161,16 @@ func DefaultConfig() Config {
 	if cfg.Sync.PortalTimeoutSeconds <= 0 {
 		cfg.Sync.PortalTimeoutSeconds = 75
 	}
+	applyAvatarClientProfile(&cfg)
 	applyAvatarBadgeConfigFile(&cfg)
+	if profile := envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE", ""); profile != "" {
+		cfg.Matrix.AvatarClientProfile = profile
+		applyAvatarClientProfile(&cfg)
+	}
+	cfg.Matrix.PlatformAvatars = envBool("BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS", cfg.Matrix.PlatformAvatars)
+	cfg.Matrix.DMParticipantAvatars = envBool("BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS", cfg.Matrix.DMParticipantAvatars)
+	cfg.Matrix.AvatarBadges = envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES", cfg.Matrix.AvatarBadges)
+	cfg.Matrix.AvatarFallbackBadges = envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_FALLBACK_BADGES", cfg.Matrix.AvatarFallbackBadges)
 	cfg.Matrix.AvatarBadgePosition = envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_POSITION", cfg.Matrix.AvatarBadgePosition)
 	cfg.Matrix.AvatarBadgeLayout = envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_LAYOUT", cfg.Matrix.AvatarBadgeLayout)
 	cfg.Matrix.AvatarBadgeShape = envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHAPE", cfg.Matrix.AvatarBadgeShape)
@@ -172,6 +187,79 @@ func DefaultConfig() Config {
 	return cfg
 }
 
+func applyAvatarClientProfile(cfg *Config) {
+	profile := normalizeAvatarClientProfile(cfg.Matrix.AvatarClientProfile)
+	cfg.Matrix.AvatarClientProfile = profile
+	switch profile {
+	case "cinny":
+		cfg.Matrix.AvatarBadges = true
+		cfg.Matrix.AvatarFallbackBadges = true
+		cfg.Matrix.AvatarBadgeLayout = "circle-safe"
+		cfg.Matrix.AvatarBadgeShape = "rounded"
+		cfg.Matrix.AvatarBadgeSizePercent = 22
+		cfg.Matrix.AvatarBadgeInsetPercent = 0
+		cfg.Matrix.AvatarBadgeShadow = false
+		cfg.Matrix.GroupAvatarStyle = "auto"
+		cfg.Matrix.GroupAvatarMaxParticipants = 10
+		cfg.Matrix.GroupAvatarOverlapPercent = 34
+	case "element":
+		cfg.Matrix.AvatarBadges = true
+		cfg.Matrix.AvatarFallbackBadges = true
+		cfg.Matrix.AvatarBadgeLayout = "circle-safe"
+		cfg.Matrix.AvatarBadgeShape = "rounded"
+		cfg.Matrix.AvatarBadgeSizePercent = 24
+		cfg.Matrix.AvatarBadgeInsetPercent = 0
+		cfg.Matrix.AvatarBadgeShadow = false
+		cfg.Matrix.GroupAvatarStyle = "auto"
+		cfg.Matrix.GroupAvatarMaxParticipants = 10
+		cfg.Matrix.GroupAvatarOverlapPercent = 32
+	case "generic":
+		cfg.Matrix.AvatarBadges = true
+		cfg.Matrix.AvatarFallbackBadges = true
+		cfg.Matrix.AvatarBadgeLayout = "circle-safe"
+		cfg.Matrix.AvatarBadgeShape = "rounded"
+		cfg.Matrix.AvatarBadgeSizePercent = 26
+		cfg.Matrix.AvatarBadgeInsetPercent = 0
+		cfg.Matrix.AvatarBadgeShadow = true
+		cfg.Matrix.GroupAvatarStyle = "auto"
+		cfg.Matrix.GroupAvatarMaxParticipants = 6
+		cfg.Matrix.GroupAvatarOverlapPercent = 30
+	case "beeper-native":
+		cfg.Matrix.AvatarBadges = false
+		cfg.Matrix.AvatarFallbackBadges = false
+		cfg.Matrix.PlatformAvatars = false
+		cfg.Matrix.DMParticipantAvatars = true
+		cfg.Matrix.AvatarBadgeLayout = "circle-safe"
+		cfg.Matrix.AvatarBadgeShape = "rounded"
+		cfg.Matrix.AvatarBadgeSizePercent = 22
+		cfg.Matrix.AvatarBadgeInsetPercent = 0
+		cfg.Matrix.AvatarBadgeShadow = false
+		cfg.Matrix.GroupAvatarStyle = "initials"
+		cfg.Matrix.GroupAvatarMaxParticipants = 2
+		cfg.Matrix.GroupAvatarOverlapPercent = 0
+	case "custom":
+		return
+	}
+	cfg.Matrix.GroupAvatarExcludeSelf = true
+}
+
+func normalizeAvatarClientProfile(profile string) string {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "", "cinny", "cinny-web":
+		return "cinny"
+	case "element", "element-web", "element-desktop":
+		return "element"
+	case "generic", "matrix", "matrix-standard", "standard":
+		return "generic"
+	case "beeper", "bipa", "beeper-native", "bipa-native", "native":
+		return "beeper-native"
+	case "custom", "manual":
+		return "custom"
+	default:
+		return "cinny"
+	}
+}
+
 func applyAvatarBadgeConfigFile(cfg *Config) {
 	path := strings.TrimSpace(cfg.Matrix.AvatarBadgeConfigPath)
 	if path == "" {
@@ -184,6 +272,13 @@ func applyAvatarBadgeConfigFile(cfg *Config) {
 	var file avatarBadgeConfigFile
 	if err := yaml.Unmarshal(body, &file); err != nil {
 		return
+	}
+	if file.AvatarBadge.ClientProfile != "" {
+		cfg.Matrix.AvatarClientProfile = file.AvatarBadge.ClientProfile
+		applyAvatarClientProfile(cfg)
+	}
+	if file.AvatarBadge.FallbackBadges != nil {
+		cfg.Matrix.AvatarFallbackBadges = *file.AvatarBadge.FallbackBadges
 	}
 	if file.AvatarBadge.Position != "" {
 		cfg.Matrix.AvatarBadgePosition = file.AvatarBadge.Position

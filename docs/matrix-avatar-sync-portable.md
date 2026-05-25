@@ -108,12 +108,14 @@ Public-safe example:
 
 ```yaml
 avatar_badge:
+  client_profile: cinny
+  fallback_badges: true
   position: bottom-right
   layout: circle-safe
   shape: rounded
-  size_percent: 34
+  size_percent: 22
   inset_percent: 0
-  shadow: true
+  shadow: false
 
 group_avatar:
   style: auto
@@ -129,6 +131,48 @@ group_avatar:
 or more visible participants. If only one visible participant remains after
 self-exclusion, the renderer uses a full-size single initials avatar instead of
 a tiny group bubble.
+
+## Matrix Client Profiles
+
+Matrix room avatars are room state. A homeserver normally sends the same
+`m.room.avatar` to every client, so the portable/server-side sync cannot publish
+different avatar images to Element and Cinny for the same room at the same time.
+
+Use `avatar_badge.client_profile` to choose the best server-side profile for the
+client you care about most:
+
+| Profile | Use when | Behavior |
+|---|---|---|
+| `cinny` | Cinny is the main Matrix UI | Circle-safe small badge, dense 1-10 group bubbles. |
+| `element` | Element Web/Desktop is the main UI | Circle-safe badge with slightly more room for Element crops. |
+| `generic` | Multiple unknown Matrix clients consume the rooms | Conservative badge sizing and up to six visible group bubbles. |
+| `beeper-native` / `bipa-native` | The target client already has native Beeper/BIPA context | Leaves real source photos unbadged and disables generated fallback badges. `beeper-native` is the canonical stored/output value. |
+| `custom` | You tune every value manually | Does not apply any preset after loading config. |
+
+The same preset is available as an environment variable:
+
+```bash
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE=cinny
+```
+
+For native Beeper/BIPA-style usage where profile pictures should not be
+"fixed", use:
+
+```bash
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE=beeper-native
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES=false
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_FALLBACK_BADGES=false
+```
+
+For true per-client rendering, keep Matrix state canonical and add a client-side
+enhancer where the client supports it. This repository includes a small
+self-hosted Cinny enhancer in `infra/cinny-room-list-avatars/`; Element does not
+currently expose an equivalent stable plugin point for room-list avatar
+replacement.
+
+Only publish configurator proof JSON or screenshots with demo or redacted
+participant names. The renderer itself is local/offline, but the proof panel can
+contain whatever names, message counts, and self IDs you type into it.
 
 ## Contact Photo Overrides
 

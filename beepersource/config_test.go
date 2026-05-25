@@ -35,6 +35,9 @@ func TestDefaultConfigIsLocalBidirectionalAndSafe(t *testing.T) {
 	if cfg.Matrix.RoomNameIncludePlatform {
 		t.Fatal("expected room names to omit platform labels by default")
 	}
+	if cfg.Matrix.AvatarClientProfile != "cinny" || cfg.Matrix.AvatarBadgeSizePercent != 22 || cfg.Matrix.GroupAvatarMaxParticipants != 10 {
+		t.Fatalf("expected Cinny avatar profile defaults, got %#v", cfg.Matrix)
+	}
 }
 
 func TestConfigCanDisableMatrixToBeeperWithoutRedeploy(t *testing.T) {
@@ -69,11 +72,74 @@ func TestConfigCanDisableDMParticipantAvatars(t *testing.T) {
 
 func TestConfigCanDisableAvatarBadges(t *testing.T) {
 	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES", "false")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_FALLBACK_BADGES", "false")
 
 	cfg := DefaultConfig()
 
 	if cfg.Matrix.AvatarBadges {
 		t.Fatal("expected room avatar badges to be disabled from env")
+	}
+	if cfg.Matrix.AvatarFallbackBadges {
+		t.Fatal("expected generated fallback avatar badges to be disabled from env")
+	}
+}
+
+func TestConfigCanUseBeeperNativeAvatarProfile(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE", "bipa-native")
+
+	cfg := DefaultConfig()
+
+	if cfg.Matrix.AvatarClientProfile != "beeper-native" {
+		t.Fatalf("expected native Beeper/BIPA profile, got %q", cfg.Matrix.AvatarClientProfile)
+	}
+	if cfg.Matrix.AvatarBadges || cfg.Matrix.AvatarFallbackBadges || cfg.Matrix.PlatformAvatars {
+		t.Fatalf("expected native profile to avoid avatar rewriting, got %#v", cfg.Matrix)
+	}
+	if !cfg.Matrix.DMParticipantAvatars || cfg.Matrix.GroupAvatarStyle != "initials" || cfg.Matrix.GroupAvatarMaxParticipants != 2 || cfg.Matrix.GroupAvatarOverlapPercent != 0 {
+		t.Fatalf("expected native profile to keep source photos and simple fallbacks, got %#v", cfg.Matrix)
+	}
+}
+
+func TestConfigExplicitAvatarSourceEnvOverridesNativeProfile(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE", "beeper-native")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS", "true")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS", "false")
+
+	cfg := DefaultConfig()
+
+	if !cfg.Matrix.PlatformAvatars || cfg.Matrix.DMParticipantAvatars {
+		t.Fatalf("expected explicit avatar source env values to override native profile, got %#v", cfg.Matrix)
+	}
+}
+
+func TestConfigAvatarProfileCanBeOverriddenByExplicitEnv(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE", "element")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT", "31")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_MAX_PARTICIPANTS", "5")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_EXCLUDE_SELF", "false")
+
+	cfg := DefaultConfig()
+
+	if cfg.Matrix.AvatarClientProfile != "element" {
+		t.Fatalf("expected element profile, got %q", cfg.Matrix.AvatarClientProfile)
+	}
+	if cfg.Matrix.AvatarBadgeSizePercent != 31 || cfg.Matrix.GroupAvatarMaxParticipants != 5 || cfg.Matrix.GroupAvatarExcludeSelf {
+		t.Fatalf("expected explicit env to override profile defaults, got %#v", cfg.Matrix)
+	}
+}
+
+func TestConfigEmptyAvatarProfileEnvDoesNotOverrideConfigFile(t *testing.T) {
+	path := writeTextFile(t, "avatar-badge.yaml", []byte(`
+avatar_badge:
+  client_profile: element
+`))
+	t.Setenv("BEEPER_MATRIX_PROXY_AVATAR_BADGE_CONFIG", path)
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE", "")
+
+	cfg := DefaultConfig()
+
+	if cfg.Matrix.AvatarClientProfile != "element" || cfg.Matrix.AvatarBadgeSizePercent != 24 {
+		t.Fatalf("expected empty profile env to leave file profile intact, got %#v", cfg.Matrix)
 	}
 }
 
@@ -109,6 +175,8 @@ func TestConfigCanTuneAvatarBadgeFromEnv(t *testing.T) {
 func TestConfigCanLoadAvatarBadgeConfigFile(t *testing.T) {
 	path := writeTextFile(t, "avatar-badge.yaml", []byte(`
 avatar_badge:
+  client_profile: element
+  fallback_badges: false
   position: top-right
   layout: edge
   shape: rounded
@@ -127,6 +195,9 @@ group_avatar:
 
 	cfg := DefaultConfig()
 
+	if cfg.Matrix.AvatarClientProfile != "element" || cfg.Matrix.AvatarFallbackBadges {
+		t.Fatalf("unexpected client profile from file: %#v", cfg.Matrix)
+	}
 	if cfg.Matrix.AvatarBadgePosition != "top-right" || cfg.Matrix.AvatarBadgeLayout != "edge" || cfg.Matrix.AvatarBadgeShape != "rounded" {
 		t.Fatalf("unexpected badge config from file: %#v", cfg.Matrix)
 	}

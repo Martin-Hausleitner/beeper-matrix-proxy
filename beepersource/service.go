@@ -486,6 +486,9 @@ func (s *Service) portalAvatarSyncValue(chat Chat) string {
 	if platformFallback {
 		return generatedContactAvatarAssetIDWithOptions(chat, s.avatarBadgeOptions())
 	}
+	if !s.cfg.Matrix.AvatarBadges {
+		return avatarURL
+	}
 	return badgedAvatarAssetIDWithOptions(chat, avatarURL, s.avatarBadgeOptions())
 }
 

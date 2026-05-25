@@ -35,6 +35,7 @@ type avatarBadgeOptions struct {
 	position                   string
 	layout                     string
 	shape                      string
+	drawBadge                  bool
 	sizePercent                int
 	insetPercent               int
 	shadow                     bool
@@ -92,7 +93,7 @@ func addPlatformBadgeToAvatarWithOptions(chat Chat, avatar *MatrixMedia, opts av
 	fileName := strings.TrimSuffix(firstNonEmpty(avatar.FileName, "beeper-avatar"), filepath.Ext(avatar.FileName)) + "-badged.png"
 	assetID := avatar.AssetID
 	if assetID != "" {
-		assetID = avatarBadgeCacheVersion + ":" + avatar.AssetID + ":" + platformBadgeIconHash(chat) + ":" + opts.normalized().cacheKey()
+		assetID = avatarBadgeCacheVersion + ":" + avatar.AssetID + ":" + platformBadgeIconHash(chat) + ":" + realAvatarBadgeCacheKey(opts)
 	}
 	return matrixMediaWithBody(
 		matrixMediaWithAssetID(avatar, assetID),
@@ -142,7 +143,9 @@ func generatedContactAvatarMediaWithOptions(chat Chat, opts avatarBadgeOptions) 
 		drawContactFallbackBase(canvas, chat)
 	}
 	if logo, badgeColor, ok := platformBadgeGlyph(chat); ok {
-		drawPlatformBadgeWithOptions(canvas, logo, badgeColor, opts)
+		if opts.drawBadge {
+			drawPlatformBadgeWithOptions(canvas, logo, badgeColor, opts)
+		}
 	}
 	var out bytes.Buffer
 	_ = png.Encode(&out, canvas)
@@ -175,7 +178,13 @@ func badgedAvatarAssetIDWithOptions(chat Chat, avatarAssetID string, opts avatar
 	if strings.TrimSpace(avatarAssetID) == "" {
 		return ""
 	}
-	return avatarBadgeCacheVersion + ":" + avatarAssetID + ":" + platformBadgeIconHash(chat) + ":" + opts.normalized().cacheKey()
+	return avatarBadgeCacheVersion + ":" + avatarAssetID + ":" + platformBadgeIconHash(chat) + ":" + realAvatarBadgeCacheKey(opts)
+}
+
+func realAvatarBadgeCacheKey(opts avatarBadgeOptions) string {
+	normalized := opts.normalized()
+	normalized.drawBadge = true
+	return normalized.cacheKey()
 }
 
 func drawCover(dst *image.RGBA, src image.Image) {
@@ -212,6 +221,7 @@ func (s *Service) avatarBadgeOptions() avatarBadgeOptions {
 		position:                   s.cfg.Matrix.AvatarBadgePosition,
 		layout:                     s.cfg.Matrix.AvatarBadgeLayout,
 		shape:                      s.cfg.Matrix.AvatarBadgeShape,
+		drawBadge:                  s.cfg.Matrix.AvatarFallbackBadges,
 		sizePercent:                s.cfg.Matrix.AvatarBadgeSizePercent,
 		insetPercent:               s.cfg.Matrix.AvatarBadgeInsetPercent,
 		shadow:                     s.cfg.Matrix.AvatarBadgeShadow,
@@ -228,6 +238,7 @@ func defaultAvatarBadgeOptions() avatarBadgeOptions {
 		position:                   "bottom-right",
 		layout:                     "circle-safe",
 		shape:                      "rounded",
+		drawBadge:                  true,
 		sizePercent:                22,
 		insetPercent:               0,
 		shadow:                     false,
@@ -334,7 +345,11 @@ func (opts avatarBadgeOptions) cacheKey() string {
 		sum := sha256.Sum256([]byte(strings.Join(opts.groupAvatarSelfIDs, "\x00")))
 		selfHash = fmt.Sprintf("%x", sum[:4])
 	}
-	return fmt.Sprintf("%s:%s:%s:%d:%d:%s:group-%s-%d-%d-%s-%s", opts.position, opts.layout, opts.shape, opts.sizePercent, opts.insetPercent, shadow, opts.groupAvatarStyle, opts.groupAvatarMaxParticipants, opts.groupAvatarOverlapPercent, self, selfHash)
+	badge := "nobadge"
+	if opts.drawBadge {
+		badge = "badge"
+	}
+	return fmt.Sprintf("%s:%s:%s:%s:%d:%d:%s:group-%s-%d-%d-%s-%s", opts.position, opts.layout, opts.shape, badge, opts.sizePercent, opts.insetPercent, shadow, opts.groupAvatarStyle, opts.groupAvatarMaxParticipants, opts.groupAvatarOverlapPercent, self, selfHash)
 }
 
 func drawPlatformBadge(dst *image.RGBA, logo image.Image, badgeColor color.RGBA) {

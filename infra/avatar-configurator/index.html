@@ -54,6 +54,13 @@
         font-size: 13px;
       }
 
+      .hint {
+        margin: -6px 0 13px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
       .shell {
         display: grid;
         grid-template-columns: minmax(330px, 420px) minmax(0, 1fr);
@@ -381,6 +388,18 @@ Felix Faber | 2</textarea>
             <input id="selfIds" value="Ich, Me, You, Du" />
           </label>
 
+          <label>
+            Matrix-Client-Profil
+            <select id="clientProfile">
+              <option value="cinny">Cinny</option>
+              <option value="element">Element</option>
+              <option value="generic">Generic Matrix</option>
+              <option value="beeper-native">Beeper/BIPA native</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <div class="hint">BIPA/Beeper native nutzt normale Profilbilder; Cinny nutzt Messenger-Badge und Gruppen-Icons. `beeper-native` ist die kanonische Ausgabe fuer BIPA/Beeper-Aliasse.</div>
+
           <div class="grid">
             <label>
               Plattform
@@ -445,10 +464,11 @@ Felix Faber | 2</textarea>
             <input id="badgeInset" type="range" min="0" max="16" value="0" />
           </label>
 
-          <label>
+              <label>
             YAML
             <pre id="configOutput"></pre>
           </label>
+          <div class="hint">Proofs und Screenshots nur mit Demo- oder redigierten Namen veroeffentlichen.</div>
         </section>
 
         <section class="preview">
@@ -526,6 +546,7 @@ Felix Faber | 2</textarea>
       const iconCache = new Map();
       const controls = {
         participants: document.querySelector("#participants"),
+        clientProfile: document.querySelector("#clientProfile"),
         platform: document.querySelector("#platform"),
         groupStyle: document.querySelector("#groupStyle"),
         badgePosition: document.querySelector("#badgePosition"),
@@ -537,6 +558,23 @@ Felix Faber | 2</textarea>
         excludeSelf: document.querySelector("#excludeSelf"),
         selfIds: document.querySelector("#selfIds"),
       };
+
+      function applyClientProfile(profile) {
+        const profiles = {
+          cinny: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 10, overlap: 34, badgeSize: 22, badgeInset: 0 },
+          element: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 10, overlap: 32, badgeSize: 24, badgeInset: 0 },
+          generic: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 6, overlap: 30, badgeSize: 26, badgeInset: 0 },
+          "beeper-native": { badgeLayout: "circle-safe", groupStyle: "initials", maxParticipants: 2, overlap: 0, badgeSize: 22, badgeInset: 0 },
+        };
+        const next = profiles[profile];
+        if (!next) return;
+        controls.badgeLayout.value = next.badgeLayout;
+        controls.groupStyle.value = next.groupStyle;
+        controls.maxParticipants.value = next.maxParticipants;
+        controls.overlap.value = next.overlap;
+        controls.badgeSize.value = next.badgeSize;
+        controls.badgeInset.value = next.badgeInset;
+      }
 
       function crc32(input) {
         const bytes = new TextEncoder().encode(String(input));
@@ -986,7 +1024,7 @@ Felix Faber | 2</textarea>
         }
 
         const icon = await loadIcon(config.platform);
-        if (icon) {
+        if (icon && config.fallbackBadges) {
           const rect = badgeRect(config);
           ctx.save();
           ctx.shadowColor = "transparent";
@@ -1132,7 +1170,9 @@ box ${metrics.used_box_px[0]}x${metrics.used_box_px[1]}`;
       }
 
       function currentConfig() {
+        const clientProfile = controls.clientProfile.value;
         return {
+          clientProfile,
           platform: controls.platform.value,
           groupStyle: controls.groupStyle.value,
           badgePosition: controls.badgePosition.value,
@@ -1141,6 +1181,7 @@ box ${metrics.used_box_px[0]}x${metrics.used_box_px[1]}`;
           overlap: Number(controls.overlap.value),
           badgeSize: Number(controls.badgeSize.value),
           badgeInset: Number(controls.badgeInset.value),
+          fallbackBadges: clientProfile !== "beeper-native",
           excludeSelf: controls.excludeSelf.checked,
           selfIds: selfIdList(),
         };
@@ -1154,9 +1195,12 @@ box ${metrics.used_box_px[0]}x${metrics.used_box_px[1]}`;
         document.querySelector("#badgeInsetValue").textContent = `${config.badgeInset}%`;
         const names = participantList();
         document.querySelector("#rowMessage").textContent = `${names[0]?.name || "Anna"}: ${platformLabels[config.platform]} proof synced`;
-        document.querySelector("#proofText").textContent = `${names.length} Farben, Message-gewichtete Bubbles, ${platformLabels[config.platform]}-Badge ${config.badgePosition}`;
+        const badgeLabel = config.fallbackBadges ? `${platformLabels[config.platform]}-Badge ${config.badgePosition}` : "native ohne Badge";
+        document.querySelector("#proofText").textContent = `${names.length} Farben, ${config.clientProfile}-Profil, ${badgeLabel}`;
         renderIconSource(config.platform);
         document.querySelector("#configOutput").textContent = `avatar_badge:
+  client_profile: ${config.clientProfile}
+  fallback_badges: ${config.fallbackBadges}
   position: ${config.badgePosition}
   layout: ${config.badgeLayout}
   shape: rounded
@@ -1172,6 +1216,8 @@ group_avatar:
         document.querySelector("#proofOutput").textContent = JSON.stringify({
           private_data: false,
           platform: config.platform,
+          client_profile: config.clientProfile,
+          fallback_badges: config.fallbackBadges,
           raw_participants: rawParticipantList(),
           rendered_participants: names,
           self_excluded: config.excludeSelf,
@@ -1200,11 +1246,18 @@ group_avatar:
         document.querySelector("#status").textContent = "rendered locally";
       }
 
-      Object.values(controls).forEach((control) => {
-        control.addEventListener("input", render);
-        control.addEventListener("change", render);
+      Object.entries(controls).forEach(([name, control]) => {
+        const rerender = () => {
+          if (name === "clientProfile") applyClientProfile(control.value);
+          render();
+        };
+        control.addEventListener("input", rerender);
+        control.addEventListener("change", rerender);
       });
-      loadIconManifest().then(render);
+      loadIconManifest().then(() => {
+        applyClientProfile(controls.clientProfile.value);
+        return render();
+      });
     </script>
   </body>
 </html>

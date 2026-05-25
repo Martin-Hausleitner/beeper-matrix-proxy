@@ -42,9 +42,16 @@ The screenshots below are generated from public-safe demo data in the local
 configurator. They show the same native Matrix `m.room.avatar` output that
 Cinny and Element receive from the sync.
 
-| Configurator | Single visible member | 1-10 group layouts |
-|---|---|---|
-| ![Avatar configurator overview](docs/assets/avatar-configurator-overview.png) | ![Single visible participant fallback](docs/assets/avatar-single-visible-fallback.png) | ![Group avatar gallery from one to ten participants](docs/assets/avatar-gallery-1-to-10.png) |
+| Configurator | Single visible member | 1-10 group layouts | Client profile mode |
+|---|---|---|---|
+| ![Avatar configurator overview](docs/assets/avatar-configurator-overview.png) | ![Single visible participant fallback](docs/assets/avatar-single-visible-fallback.png) | ![Group avatar gallery from one to ten participants](docs/assets/avatar-gallery-1-to-10.png) | ![Avatar client profile mode](docs/assets/avatar-client-profiles.png) |
+
+The sync can target a Matrix client profile (`cinny`, `element`, `generic`,
+`beeper-native`/`bipa-native`, or `custom`) so the same portable renderer uses
+badge sizes and group-bubble density that fit the main client UI. Matrix room
+avatars are server room state, so one room cannot simultaneously publish
+different `m.room.avatar` images to Cinny and Element. For Beeper/BIPA-native
+clients, use the native profile to leave real source avatars unmodified.
 
 ## Matrix Archive Backup Sync
 
@@ -268,6 +275,12 @@ Because the badge is written into the normal Matrix `m.room.avatar` media, Cinny
 and Element show the service marker without any client patch. Set it to `false`
 if you want unmodified Beeper/BIPA avatar images only.
 
+Use `BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE` to choose the target UI:
+`cinny` is the default, `element` uses a slightly larger crop-safe badge,
+`generic` is more conservative, and `beeper-native`/`bipa-native` disables badge
+generation for native Beeper/BIPA-style clients that already show source
+context.
+
 Avatar badge layout is configurable for two public-safe avatar types:
 real contact/photo avatars plus a messenger badge, and generated initials
 avatars plus a messenger badge when no source photo exists. The default
@@ -276,12 +289,13 @@ Use `edge` if your client does not clip avatars to a circle and you want the
 service icon visually tighter in the lower-right corner.
 
 ```bash
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE=cinny # cinny, element, generic, beeper-native, custom
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_POSITION=bottom-right # bottom-right, bottom-left, top-right, top-left
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_LAYOUT=circle-safe    # circle-safe or edge
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHAPE=rounded        # rounded or circle
-export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT=34
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT=22
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_INSET_PERCENT=0
-export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHADOW=true
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHADOW=false
 ```
 
 The same values can live in a private or deployment-local YAML file without any
@@ -293,12 +307,14 @@ export BEEPER_MATRIX_PROXY_AVATAR_BADGE_CONFIG="$HOME/Library/Application Suppor
 
 ```yaml
 avatar_badge:
+  client_profile: cinny
+  fallback_badges: true
   position: bottom-right
   layout: circle-safe
   shape: rounded
-  size_percent: 34
+  size_percent: 22
   inset_percent: 0
-  shadow: true
+  shadow: false
 
 group_avatar:
   style: auto
