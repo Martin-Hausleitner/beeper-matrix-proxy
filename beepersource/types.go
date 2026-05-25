@@ -41,9 +41,10 @@ type Chat struct {
 }
 
 type Sender struct {
-	ID          string
-	DisplayName string
-	AvatarID    string
+	ID           string
+	DisplayName  string
+	AvatarID     string
+	MessageCount int
 }
 
 type Attachment struct {

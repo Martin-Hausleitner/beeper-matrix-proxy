@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -34,10 +36,41 @@ type MatrixConfig struct {
 	PlatformAvatars            bool
 	DMParticipantAvatars       bool
 	AvatarBadges               bool
+	AvatarBadgeConfigPath      string
+	AvatarBadgePosition        string
+	AvatarBadgeLayout          string
+	AvatarBadgeShape           string
+	AvatarBadgeSizePercent     int
+	AvatarBadgeInsetPercent    int
+	AvatarBadgeShadow          bool
+	GroupAvatarStyle           string
+	GroupAvatarMaxParticipants int
+	GroupAvatarOverlapPercent  int
+	GroupAvatarExcludeSelf     bool
+	GroupAvatarSelfIDs         []string
 	ContactAvatarOverridesPath string
 	ForceAvatarSync            bool
 	Spaces                     bool
+	SpaceGrouping              string
 	InsecureSkipTLS            bool
+}
+
+type avatarBadgeConfigFile struct {
+	AvatarBadge struct {
+		Position     string `yaml:"position"`
+		Layout       string `yaml:"layout"`
+		Shape        string `yaml:"shape"`
+		SizePercent  *int   `yaml:"size_percent"`
+		InsetPercent *int   `yaml:"inset_percent"`
+		Shadow       *bool  `yaml:"shadow"`
+	} `yaml:"avatar_badge"`
+	GroupAvatar struct {
+		Style           string   `yaml:"style"`
+		MaxParticipants *int     `yaml:"max_participants"`
+		OverlapPercent  *int     `yaml:"overlap_percent"`
+		ExcludeSelf     *bool    `yaml:"exclude_self"`
+		SelfIDs         []string `yaml:"self_ids"`
+	} `yaml:"group_avatar"`
 }
 
 type SyncConfig struct {
@@ -71,15 +104,28 @@ func DefaultConfig() Config {
 			TokenEnv:                   envString("BEEPER_MATRIX_PROXY_MATRIX_TOKEN_ENV", "MATRIX_ACCESS_TOKEN"),
 			UserID:                     envString("BEEPER_MATRIX_PROXY_MATRIX_USER_ID", ""),
 			InviteUserID:               envString("BEEPER_MATRIX_PROXY_MATRIX_INVITE_USER_ID", ""),
-			RoomNamePrefix:             envStringAllowEmpty("BEEPER_MATRIX_PROXY_MATRIX_ROOM_PREFIX", "Beeper: "),
-			RoomNameIncludePlatform:    envBool("BEEPER_MATRIX_PROXY_MATRIX_ROOM_INCLUDE_PLATFORM", true),
+			RoomNamePrefix:             envStringAllowEmpty("BEEPER_MATRIX_PROXY_MATRIX_ROOM_PREFIX", ""),
+			RoomNameIncludePlatform:    envBool("BEEPER_MATRIX_PROXY_MATRIX_ROOM_INCLUDE_PLATFORM", false),
 			PrefixSender:               envBool("BEEPER_MATRIX_PROXY_MATRIX_PREFIX_SENDER", true),
 			PlatformAvatars:            envBool("BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS", false),
 			DMParticipantAvatars:       envBool("BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS", true),
 			AvatarBadges:               envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES", true),
+			AvatarBadgeConfigPath:      envString("BEEPER_MATRIX_PROXY_AVATAR_BADGE_CONFIG", ""),
+			AvatarBadgePosition:        envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_POSITION", "bottom-right"),
+			AvatarBadgeLayout:          envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_LAYOUT", "circle-safe"),
+			AvatarBadgeShape:           envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHAPE", "rounded"),
+			AvatarBadgeSizePercent:     envInt("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT", 34),
+			AvatarBadgeInsetPercent:    envInt("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_INSET_PERCENT", 0),
+			AvatarBadgeShadow:          envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHADOW", true),
+			GroupAvatarStyle:           envString("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_STYLE", "auto"),
+			GroupAvatarMaxParticipants: envInt("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_MAX_PARTICIPANTS", 4),
+			GroupAvatarOverlapPercent:  envInt("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_OVERLAP_PERCENT", 34),
+			GroupAvatarExcludeSelf:     envBool("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_EXCLUDE_SELF", true),
+			GroupAvatarSelfIDs:         envCSV("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_SELF_IDS"),
 			ContactAvatarOverridesPath: envString("BEEPER_MATRIX_PROXY_CONTACT_AVATAR_OVERRIDES", ""),
 			ForceAvatarSync:            envBool("BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC", false),
 			Spaces:                     envBool("BEEPER_MATRIX_PROXY_MATRIX_SPACES", false),
+			SpaceGrouping:              envString("BEEPER_MATRIX_PROXY_MATRIX_SPACE_GROUPING", "platform"),
 			InsecureSkipTLS:            envBool("BEEPER_MATRIX_PROXY_MATRIX_INSECURE_TLS", false),
 		},
 		Sync: SyncConfig{
@@ -109,7 +155,69 @@ func DefaultConfig() Config {
 	if cfg.Sync.PortalTimeoutSeconds <= 0 {
 		cfg.Sync.PortalTimeoutSeconds = 75
 	}
+	applyAvatarBadgeConfigFile(&cfg)
+	cfg.Matrix.AvatarBadgePosition = envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_POSITION", cfg.Matrix.AvatarBadgePosition)
+	cfg.Matrix.AvatarBadgeLayout = envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_LAYOUT", cfg.Matrix.AvatarBadgeLayout)
+	cfg.Matrix.AvatarBadgeShape = envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHAPE", cfg.Matrix.AvatarBadgeShape)
+	cfg.Matrix.AvatarBadgeSizePercent = envInt("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT", cfg.Matrix.AvatarBadgeSizePercent)
+	cfg.Matrix.AvatarBadgeInsetPercent = envInt("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_INSET_PERCENT", cfg.Matrix.AvatarBadgeInsetPercent)
+	cfg.Matrix.AvatarBadgeShadow = envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHADOW", cfg.Matrix.AvatarBadgeShadow)
+	cfg.Matrix.GroupAvatarStyle = envString("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_STYLE", cfg.Matrix.GroupAvatarStyle)
+	cfg.Matrix.GroupAvatarMaxParticipants = envInt("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_MAX_PARTICIPANTS", cfg.Matrix.GroupAvatarMaxParticipants)
+	cfg.Matrix.GroupAvatarOverlapPercent = envInt("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_OVERLAP_PERCENT", cfg.Matrix.GroupAvatarOverlapPercent)
+	cfg.Matrix.GroupAvatarExcludeSelf = envBool("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_EXCLUDE_SELF", cfg.Matrix.GroupAvatarExcludeSelf)
+	if selfIDs := envCSV("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_SELF_IDS"); len(selfIDs) > 0 {
+		cfg.Matrix.GroupAvatarSelfIDs = selfIDs
+	}
 	return cfg
+}
+
+func applyAvatarBadgeConfigFile(cfg *Config) {
+	path := strings.TrimSpace(cfg.Matrix.AvatarBadgeConfigPath)
+	if path == "" {
+		return
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var file avatarBadgeConfigFile
+	if err := yaml.Unmarshal(body, &file); err != nil {
+		return
+	}
+	if file.AvatarBadge.Position != "" {
+		cfg.Matrix.AvatarBadgePosition = file.AvatarBadge.Position
+	}
+	if file.AvatarBadge.Layout != "" {
+		cfg.Matrix.AvatarBadgeLayout = file.AvatarBadge.Layout
+	}
+	if file.AvatarBadge.Shape != "" {
+		cfg.Matrix.AvatarBadgeShape = file.AvatarBadge.Shape
+	}
+	if file.AvatarBadge.SizePercent != nil && *file.AvatarBadge.SizePercent > 0 {
+		cfg.Matrix.AvatarBadgeSizePercent = *file.AvatarBadge.SizePercent
+	}
+	if file.AvatarBadge.InsetPercent != nil && *file.AvatarBadge.InsetPercent >= 0 {
+		cfg.Matrix.AvatarBadgeInsetPercent = *file.AvatarBadge.InsetPercent
+	}
+	if file.AvatarBadge.Shadow != nil {
+		cfg.Matrix.AvatarBadgeShadow = *file.AvatarBadge.Shadow
+	}
+	if file.GroupAvatar.Style != "" {
+		cfg.Matrix.GroupAvatarStyle = file.GroupAvatar.Style
+	}
+	if file.GroupAvatar.MaxParticipants != nil && *file.GroupAvatar.MaxParticipants > 0 {
+		cfg.Matrix.GroupAvatarMaxParticipants = *file.GroupAvatar.MaxParticipants
+	}
+	if file.GroupAvatar.OverlapPercent != nil && *file.GroupAvatar.OverlapPercent >= 0 {
+		cfg.Matrix.GroupAvatarOverlapPercent = *file.GroupAvatar.OverlapPercent
+	}
+	if file.GroupAvatar.ExcludeSelf != nil {
+		cfg.Matrix.GroupAvatarExcludeSelf = *file.GroupAvatar.ExcludeSelf
+	}
+	if len(file.GroupAvatar.SelfIDs) > 0 {
+		cfg.Matrix.GroupAvatarSelfIDs = file.GroupAvatar.SelfIDs
+	}
 }
 
 func (c Config) BeeperToken() (string, error) {

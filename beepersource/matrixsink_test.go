@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -573,7 +574,7 @@ func TestMatrixClientSinkCreatesServiceSpacesAndLinksPortals(t *testing.T) {
 	if err := sink.EnsurePortalSpaces(ctx, []Chat{wa, sig}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(createdSpaces, ",") != "Beeper,Signal,WhatsApp" {
+	if strings.Join(createdSpaces, ",") != "All Chats,Signal,WhatsApp" {
 		t.Fatalf("unexpected space creation order/names: %#v", createdSpaces)
 	}
 	if uploadCount != 3 {
@@ -587,6 +588,77 @@ func TestMatrixClientSinkCreatesServiceSpacesAndLinksPortals(t *testing.T) {
 	for _, want := range []string{"!space-signal:local", "!space-whatsapp:local"} {
 		if !pathsContainEscapedRoomID(spaceParentLinks, want) {
 			t.Fatalf("expected m.space.parent link for %s in %#v", want, spaceParentLinks)
+		}
+	}
+}
+
+func TestMatrixClientSinkCanCreatePlatformAccountSpaceHierarchy(t *testing.T) {
+	var createdSpaces []string
+	var spaceChildLinks []string
+	var uploadCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/createRoom"):
+			var body struct {
+				Name string `json:"name"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode create room: %v", err)
+			}
+			createdSpaces = append(createdSpaces, body.Name)
+			roomID := "!space-" + strings.ToLower(strings.NewReplacer(" ", "-", "·", "").Replace(body.Name)) + ":local"
+			_ = json.NewEncoder(w).Encode(map[string]string{"room_id": roomID})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/upload"):
+			uploadCount++
+			_ = json.NewEncoder(w).Encode(map[string]string{"content_uri": fmt.Sprintf("mxc://local/upload-%d", uploadCount)})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.space.child/"):
+			spaceChildLinks = append(spaceChildLinks, r.URL.Path)
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$child:local"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.space.parent/"):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$parent:local"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.room."):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$state:local"})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	wa := Chat{ID: "!wa:beeper", AccountID: "local-whatsapp_main", Network: "WhatsApp", Name: "Family"}
+	sig := Chat{ID: "!sig:beeper", AccountID: "local-signal_support", Network: "Signal", Name: "Support"}
+	if err := store.UpsertPortal(ctx, wa, "!portal-wa:local", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertPortal(ctx, sig, "!portal-sig:local", ""); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	cfg.Matrix.SpaceGrouping = "platform-account"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sink.EnsurePortalSpaces(ctx, []Chat{wa, sig}); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(createdSpaces, ",")
+	for _, want := range []string{"All Chats", "Signal", "Signal · Support", "WhatsApp", "WhatsApp · Main"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("expected created spaces to include %q, got %#v", want, createdSpaces)
+		}
+	}
+	if uploadCount != 5 {
+		t.Fatalf("expected root, platform, and account space avatars to upload, got %d", uploadCount)
+	}
+	for _, want := range []string{"!portal-wa:local", "!portal-sig:local"} {
+		if !pathsContainEscapedRoomID(spaceChildLinks, want) {
+			t.Fatalf("expected room child link for %s in %#v", want, spaceChildLinks)
 		}
 	}
 }

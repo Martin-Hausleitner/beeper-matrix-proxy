@@ -5,6 +5,7 @@ import (
 	"context"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"io"
 	"os"
@@ -29,11 +30,13 @@ func TestGeneratedContactAvatarUsesPersonFallbackWithMessengerBadge(t *testing.T
 	if img.Bounds().Dx() != 256 || img.Bounds().Dy() != 256 {
 		t.Fatalf("expected 256px avatar, got %v", img.Bounds())
 	}
-	if badgeWhiteRingPixels(img) > 900 {
-		t.Fatalf("expected no harsh white badge ring, got %d white-ring pixels", badgeWhiteRingPixels(img))
+	base := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	drawContactFallbackBase(base, Chat{ID: "!chat:beeper", AccountID: "email", Network: "Email", Name: "No Photo"})
+	if badgeWhiteRingPixels(img)-badgeWhiteRingPixels(base) > 250 {
+		t.Fatalf("expected no harsh white badge ring, got %d excess white-ring pixels", badgeWhiteRingPixels(img)-badgeWhiteRingPixels(base))
 	}
-	if !badgeHasPlatformColor(img, "#5F6368") {
-		t.Fatal("expected email-colored badge in bottom-right corner")
+	if badgeDeltaPixels(base, img) < 1000 {
+		t.Fatal("expected a visible messenger badge in the bottom-right corner")
 	}
 }
 
@@ -60,11 +63,33 @@ func TestAddPlatformBadgeToAvatarUsesAppStyleBadgeWithoutHarshWhiteRing(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if badgeWhiteRingPixels(img) > 900 {
-		t.Fatalf("expected app-style badge without a white ring, got %d white-ring pixels", badgeWhiteRingPixels(img))
+	base := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	draw.Draw(base, base.Bounds(), &image.Uniform{C: color.RGBA{R: 40, G: 90, B: 170, A: 255}}, image.Point{}, draw.Src)
+	if badgeWhiteRingPixels(img)-badgeWhiteRingPixels(base) > 250 {
+		t.Fatalf("expected app-style badge without a white ring, got %d excess white-ring pixels", badgeWhiteRingPixels(img)-badgeWhiteRingPixels(base))
 	}
-	if !badgeHasPlatformColor(img, "#25D366") {
-		t.Fatal("expected WhatsApp-colored badge")
+	if badgeDeltaPixels(base, img) < 1000 {
+		t.Fatal("expected visible WhatsApp badge pixels")
+	}
+}
+
+func TestGeneratedContactAvatarUsesDistinctGradientAndCenteredInitials(t *testing.T) {
+	alice := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	bob := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	drawContactFallbackBase(alice, Chat{ID: "!alice:beeper", Name: "Alice Example"})
+	drawContactFallbackBase(bob, Chat{ID: "!bob:beeper", Name: "Bob Example"})
+
+	if sampledColorDistance(alice, bob, 128, 30) < 35 {
+		t.Fatal("expected distinct generated background colors for different contacts")
+	}
+	if sampledColorDistance(alice, alice, 128, 30) != 0 {
+		t.Fatal("expected deterministic color samples")
+	}
+	if gradientDistance(alice) < 20 {
+		t.Fatal("expected a visible but subtle gradient, not a flat color")
+	}
+	if whiteInitialPixels(alice) < 1500 {
+		t.Fatalf("expected centered white initials, got %d white pixels", whiteInitialPixels(alice))
 	}
 }
 
@@ -93,12 +118,41 @@ func TestPortalAvatarPrefersPrivateOverrideBeforeBeeperAvatar(t *testing.T) {
 	if len(api.downloadedAssets) != 0 {
 		t.Fatalf("expected override to avoid Beeper avatar download, got %#v", api.downloadedAssets)
 	}
-	if !strings.HasPrefix(avatar.AssetID, "avatar-badge-v2:contact-override:!chat:beeper:") {
+	if !strings.HasPrefix(avatar.AssetID, "avatar-badge-v9:contact-override:!chat:beeper:") {
 		t.Fatalf("expected override asset id, got %q", avatar.AssetID)
 	}
 }
 
-func TestPortalAvatarBadgesLocalBeeperAvatarWithStableV2CacheKey(t *testing.T) {
+func sampledColorDistance(a image.Image, b image.Image, x int, y int) int {
+	ar, ag, ab, _ := a.At(x, y).RGBA()
+	br, bg, bb, _ := b.At(x, y).RGBA()
+	return abs(int(ar>>8)-int(br>>8)) + abs(int(ag>>8)-int(bg>>8)) + abs(int(ab>>8)-int(bb>>8))
+}
+
+func gradientDistance(img image.Image) int {
+	return sampledColorDistance(img, img, 128, 30) + sampledColorDistanceAt(img, 128, 30, 128, 220)
+}
+
+func sampledColorDistanceAt(img image.Image, x1 int, y1 int, x2 int, y2 int) int {
+	r1, g1, b1, _ := img.At(x1, y1).RGBA()
+	r2, g2, b2, _ := img.At(x2, y2).RGBA()
+	return abs(int(r1>>8)-int(r2>>8)) + abs(int(g1>>8)-int(g2>>8)) + abs(int(b1>>8)-int(b2>>8))
+}
+
+func whiteInitialPixels(img image.Image) int {
+	count := 0
+	for y := 60; y < 160; y++ {
+		for x := 45; x < 211; x++ {
+			r, g, b, a := img.At(x, y).RGBA()
+			if a > 50000 && r > 56000 && g > 56000 && b > 56000 {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func TestPortalAvatarBadgesLocalBeeperAvatarWithStableV8CacheKey(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
 	defer store.Close()
@@ -115,8 +169,8 @@ func TestPortalAvatarBadgesLocalBeeperAvatarWithStableV2CacheKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(avatar.AssetID, "avatar-badge-v2:"+avatarPath+":") {
-		t.Fatalf("expected local avatar to receive badge v2 cache key, got %q", avatar.AssetID)
+	if !strings.HasPrefix(avatar.AssetID, "avatar-badge-v9:"+avatarPath+":") {
+		t.Fatalf("expected local avatar to receive badge v9 cache key, got %q", avatar.AssetID)
 	}
 }
 
@@ -169,15 +223,11 @@ func quoteYAML(value string) string {
 }
 
 func badgeWhiteRingPixels(img image.Image) int {
-	cx, cy := 210, 210
-	outer := 40
-	inner := 31
 	white := 0
-	for y := cy - outer; y <= cy+outer; y++ {
-		for x := cx - outer; x <= cx+outer; x++ {
-			dx, dy := x-cx, y-cy
-			d := dx*dx + dy*dy
-			if d > outer*outer || d < inner*inner || !image.Pt(x, y).In(img.Bounds()) {
+	for y := 150; y < 226; y++ {
+		for x := 150; x < 226; x++ {
+			xx, yy := x-150, y-150
+			if !inRoundedRect(xx, yy, 76, 76, 19) || inRoundedRect(xx-4, yy-4, 68, 68, 16) {
 				continue
 			}
 			r, g, b, a := img.At(x, y).RGBA()
@@ -189,22 +239,18 @@ func badgeWhiteRingPixels(img image.Image) int {
 	return white
 }
 
-func badgeHasPlatformColor(img image.Image, hex string) bool {
-	want := parseHexColor(hex)
-	matches := 0
-	for y := 176; y < 252; y++ {
-		for x := 176; x < 252; x++ {
-			r16, g16, b16, a16 := img.At(x, y).RGBA()
-			if a16 < 50000 {
-				continue
-			}
-			r, g, b := int(r16>>8), int(g16>>8), int(b16>>8)
-			if abs(r-int(want.R)) < 20 && abs(g-int(want.G)) < 20 && abs(b-int(want.B)) < 20 {
-				matches++
+func badgeDeltaPixels(before image.Image, after image.Image) int {
+	changed := 0
+	for y := 150; y < 226; y++ {
+		for x := 150; x < 226; x++ {
+			r1, g1, b1, a1 := before.At(x, y).RGBA()
+			r2, g2, b2, a2 := after.At(x, y).RGBA()
+			if abs(int(r1>>8)-int(r2>>8))+abs(int(g1>>8)-int(g2>>8))+abs(int(b1>>8)-int(b2>>8))+abs(int(a1>>8)-int(a2>>8)) > 24 {
+				changed++
 			}
 		}
 	}
-	return matches > 600
+	return changed
 }
 
 func abs(v int) int {

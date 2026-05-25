@@ -2,6 +2,7 @@ package beepersource
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -27,6 +28,12 @@ func TestDefaultConfigIsLocalBidirectionalAndSafe(t *testing.T) {
 	}
 	if cfg.Safety.DisableMatrixToBeeper {
 		t.Fatal("expected matrix->beeper to be enabled by default per requested plan")
+	}
+	if cfg.Matrix.RoomNamePrefix != "" {
+		t.Fatalf("expected plain room names by default, got prefix %q", cfg.Matrix.RoomNamePrefix)
+	}
+	if cfg.Matrix.RoomNameIncludePlatform {
+		t.Fatal("expected room names to omit platform labels by default")
 	}
 }
 
@@ -70,6 +77,70 @@ func TestConfigCanDisableAvatarBadges(t *testing.T) {
 	}
 }
 
+func TestConfigCanTuneAvatarBadgeFromEnv(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_POSITION", "bottom-left")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_LAYOUT", "circle-safe")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHAPE", "circle")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT", "34")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_INSET_PERCENT", "2")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHADOW", "false")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_STYLE", "bubbles")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_MAX_PARTICIPANTS", "5")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_OVERLAP_PERCENT", "28")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_EXCLUDE_SELF", "false")
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_GROUP_AVATAR_SELF_IDS", "me@example,@me:matrix.test")
+
+	cfg := DefaultConfig()
+
+	if cfg.Matrix.AvatarBadgePosition != "bottom-left" || cfg.Matrix.AvatarBadgeLayout != "circle-safe" || cfg.Matrix.AvatarBadgeShape != "circle" {
+		t.Fatalf("unexpected badge config: %#v", cfg.Matrix)
+	}
+	if cfg.Matrix.AvatarBadgeSizePercent != 34 || cfg.Matrix.AvatarBadgeInsetPercent != 2 || cfg.Matrix.AvatarBadgeShadow {
+		t.Fatalf("unexpected badge sizing/shadow config: %#v", cfg.Matrix)
+	}
+	if cfg.Matrix.GroupAvatarStyle != "bubbles" || cfg.Matrix.GroupAvatarMaxParticipants != 5 || cfg.Matrix.GroupAvatarOverlapPercent != 28 || cfg.Matrix.GroupAvatarExcludeSelf {
+		t.Fatalf("unexpected group avatar config: %#v", cfg.Matrix)
+	}
+	if len(cfg.Matrix.GroupAvatarSelfIDs) != 2 || cfg.Matrix.GroupAvatarSelfIDs[0] != "me@example" {
+		t.Fatalf("unexpected group avatar self ids: %#v", cfg.Matrix.GroupAvatarSelfIDs)
+	}
+}
+
+func TestConfigCanLoadAvatarBadgeConfigFile(t *testing.T) {
+	path := writeTextFile(t, "avatar-badge.yaml", []byte(`
+avatar_badge:
+  position: top-right
+  layout: edge
+  shape: rounded
+  size_percent: 29
+  inset_percent: 4
+  shadow: false
+group_avatar:
+  style: bubbles
+  max_participants: 5
+  overlap_percent: 26
+  exclude_self: true
+  self_ids:
+    - my-beeper-id
+`))
+	t.Setenv("BEEPER_MATRIX_PROXY_AVATAR_BADGE_CONFIG", path)
+
+	cfg := DefaultConfig()
+
+	if cfg.Matrix.AvatarBadgePosition != "top-right" || cfg.Matrix.AvatarBadgeLayout != "edge" || cfg.Matrix.AvatarBadgeShape != "rounded" {
+		t.Fatalf("unexpected badge config from file: %#v", cfg.Matrix)
+	}
+	if cfg.Matrix.AvatarBadgeSizePercent != 29 || cfg.Matrix.AvatarBadgeInsetPercent != 4 || cfg.Matrix.AvatarBadgeShadow {
+		t.Fatalf("unexpected badge sizing/shadow config from file: %#v", cfg.Matrix)
+	}
+	if cfg.Matrix.GroupAvatarStyle != "bubbles" || cfg.Matrix.GroupAvatarMaxParticipants != 5 || cfg.Matrix.GroupAvatarOverlapPercent != 26 || !cfg.Matrix.GroupAvatarExcludeSelf {
+		t.Fatalf("unexpected group avatar config from file: %#v", cfg.Matrix)
+	}
+	if len(cfg.Matrix.GroupAvatarSelfIDs) != 1 || cfg.Matrix.GroupAvatarSelfIDs[0] != "my-beeper-id" {
+		t.Fatalf("unexpected group avatar self ids from file: %#v", cfg.Matrix.GroupAvatarSelfIDs)
+	}
+}
+
 func TestConfigCanForceAvatarSync(t *testing.T) {
 	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC", "true")
 
@@ -90,13 +161,23 @@ func TestConfigCanEnableMatrixSpaces(t *testing.T) {
 	}
 }
 
-func TestConfigCanOmitPlatformFromRoomNames(t *testing.T) {
-	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_ROOM_INCLUDE_PLATFORM", "false")
+func TestConfigCanUseTeamStyleSpaceGrouping(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_SPACE_GROUPING", "platform-account")
 
 	cfg := DefaultConfig()
 
-	if cfg.Matrix.RoomNameIncludePlatform {
-		t.Fatal("expected room names to omit platform from env")
+	if cfg.Matrix.SpaceGrouping != "platform-account" {
+		t.Fatalf("expected platform-account space grouping from env, got %q", cfg.Matrix.SpaceGrouping)
+	}
+}
+
+func TestConfigCanIncludePlatformInRoomNames(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_MATRIX_ROOM_INCLUDE_PLATFORM", "true")
+
+	cfg := DefaultConfig()
+
+	if !cfg.Matrix.RoomNameIncludePlatform {
+		t.Fatal("expected room names to include platform from env")
 	}
 }
 
@@ -189,6 +270,15 @@ func TestBeeperTokenLoadsFromConfiguredEnvironment(t *testing.T) {
 	if token != "secret-token" {
 		t.Fatalf("unexpected token %q", token)
 	}
+}
+
+func writeTextFile(t *testing.T, name string, body []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestBeeperTokenExplainsMissingEnvironment(t *testing.T) {

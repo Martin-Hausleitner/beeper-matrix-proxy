@@ -434,14 +434,24 @@ func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, er
 		return s.badgePortalAvatar(chat, avatar)
 	}
 	avatarURL, platformFallback := s.portalAvatarSource(chat)
+	expectedSyncValue := s.portalAvatarSyncValue(chat)
 	lastAvatar, err := s.store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
-	if err != nil || (!s.cfg.Matrix.ForceAvatarSync && lastAvatar == avatarURL) {
+	if err != nil {
 		return nil, err
 	}
 	if platformFallback {
-		return generatedContactAvatarMedia(chat), nil
+		if !s.cfg.Matrix.ForceAvatarSync && lastAvatar == expectedSyncValue {
+			return nil, nil
+		}
+		return generatedContactAvatarMediaWithOptions(chat, s.avatarBadgeOptions()), nil
 	}
 	if avatar, ok, err := localAvatarMedia(avatarURL); ok || err != nil {
+		if !s.cfg.Matrix.ForceAvatarSync && lastAvatar == expectedSyncValue {
+			if avatar != nil && avatar.Close != nil {
+				_ = avatar.Close()
+			}
+			return nil, err
+		}
 		if err != nil {
 			return avatar, err
 		}
@@ -452,12 +462,12 @@ func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, er
 	}
 	asset, err := s.api.DownloadAsset(ctx, avatarURL)
 	if err != nil {
-		return generatedContactAvatarMedia(chat), nil
+		return generatedContactAvatarMediaWithOptions(chat, s.avatarBadgeOptions()), nil
 	}
 	body, err := io.ReadAll(asset.Content)
 	_ = asset.Content.Close()
 	if err != nil {
-		return generatedContactAvatarMedia(chat), nil
+		return generatedContactAvatarMediaWithOptions(chat, s.avatarBadgeOptions()), nil
 	}
 	fileName := firstNonEmpty(asset.FileName, "beeper-avatar")
 	mimeType := firstNonEmpty(asset.MimeType, "application/octet-stream")
@@ -472,8 +482,11 @@ func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, er
 }
 
 func (s *Service) portalAvatarSyncValue(chat Chat) string {
-	avatarURL, _ := s.portalAvatarSource(chat)
-	return avatarURL
+	avatarURL, platformFallback := s.portalAvatarSource(chat)
+	if platformFallback {
+		return generatedContactAvatarAssetIDWithOptions(chat, s.avatarBadgeOptions())
+	}
+	return badgedAvatarAssetIDWithOptions(chat, avatarURL, s.avatarBadgeOptions())
 }
 
 func (s *Service) portalAvatarSource(chat Chat) (string, bool) {
@@ -535,6 +548,17 @@ func looksLikeBeeperHTTPAssetPath(rawURL string) bool {
 
 func platformAvatarMedia(chat Chat) *MatrixMedia {
 	platform := PlatformDisplayName(chat)
+	if icon, ok := brandIconByKey(platform); ok {
+		if pngBytes, ok := brandIconPNGByKey(icon.Key); ok {
+			return &MatrixMedia{
+				AssetID:   platformAvatarSyncValue(chat),
+				Content:   bytes.NewReader(pngBytes),
+				FileName:  strings.ToLower(strings.ReplaceAll(platform, " ", "-")) + "-bridge.png",
+				MimeType:  "image/png",
+				SizeBytes: int64(len(pngBytes)),
+			}
+		}
+	}
 	if pngBytes, ok := platformLogoPNG(platform, PlatformColor(chat)); ok {
 		return &MatrixMedia{
 			AssetID:   platformAvatarSyncValue(chat),
@@ -586,7 +610,83 @@ func platformLogoSVG(platform string, bg string) string {
 }
 
 func platformAvatarSyncValue(chat Chat) string {
-	return "platform-logo-v4:" + PlatformDisplayName(chat)
+	return "platform-logo-v5:" + PlatformDisplayName(chat)
+}
+
+func accountSpaceAvatarMedia(chat Chat) *MatrixMedia {
+	spaceChat := Chat{
+		ID:        "account-space:" + accountSpaceKey(chat),
+		AccountID: chat.AccountID,
+		Network:   PlatformDisplayName(chat),
+		Name:      accountSpaceDisplayName(chat),
+	}
+	return generatedContactAvatarMediaWithOptions(spaceChat, defaultAvatarBadgeOptions())
+}
+
+func accountSpaceKey(chat Chat) string {
+	key := strings.TrimSpace(chat.AccountID)
+	if key == "" {
+		key = PlatformDisplayName(chat)
+	}
+	return brandIconKey(PlatformDisplayName(chat)) + ":" + sanitizeSpaceKey(key)
+}
+
+func accountSpaceDisplayName(chat Chat) string {
+	platform := PlatformDisplayName(chat)
+	login := accountLoginLabel(chat.AccountID, platform)
+	if login == "" || strings.EqualFold(login, platform) {
+		return platform + " Login"
+	}
+	return platform + " · " + login
+}
+
+func accountSpaceTopic(chat Chat) string {
+	return "Beeper " + PlatformDisplayName(chat) + " login/channel " + accountLoginLabel(chat.AccountID, PlatformDisplayName(chat))
+}
+
+func accountLoginLabel(accountID string, platform string) string {
+	label := strings.TrimSpace(accountID)
+	if label == "" {
+		return ""
+	}
+	label = strings.TrimPrefix(label, "local-")
+	prefix := strings.ToLower(platform)
+	prefix = strings.ReplaceAll(prefix, " ", "")
+	prefix = strings.ReplaceAll(prefix, ".", "")
+	normalized := strings.ToLower(label)
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, ".", "")
+	if strings.HasPrefix(normalized, prefix) {
+		for _, sep := range []string{"_", "-", "."} {
+			if idx := strings.Index(label, sep); idx >= 0 && idx+1 < len(label) {
+				label = label[idx+1:]
+				break
+			}
+		}
+	}
+	label = strings.ReplaceAll(label, "_", " ")
+	label = strings.ReplaceAll(label, "-", " ")
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return platform
+	}
+	return titleAccount(label)
+}
+
+func sanitizeSpaceKey(raw string) string {
+	key := strings.ToLower(strings.TrimSpace(raw))
+	key = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return '-'
+	}, key)
+	key = strings.Trim(key, "-_.")
+	if key == "" {
+		return "default"
+	}
+	return key
 }
 
 func localAvatarMedia(rawPath string) (*MatrixMedia, bool, error) {

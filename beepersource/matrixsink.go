@@ -195,18 +195,28 @@ func (m *MatrixClientSink) EnsurePortalSpaces(ctx context.Context, chats []Chat)
 	if len(chats) == 0 {
 		return nil
 	}
-	rootID, err := m.ensureSpace(ctx, "matrix_space:root", "Beeper", "Beeper bridge workspace", platformAvatarMedia(Chat{Network: "Beeper"}))
+	rootID, err := m.ensureSpace(ctx, "matrix_space:root", "All Chats", "Beeper bridge workspace", platformAvatarMedia(Chat{Network: "Beeper"}))
 	if err != nil {
 		return err
 	}
+	eligibleChats := make([]Chat, 0, len(chats))
 	byPlatform := make(map[string][]Chat)
 	for _, chat := range chats {
 		if _, ok, err := m.store.PortalRoomID(ctx, chat.ID); err != nil {
 			return err
 		} else if ok {
+			eligibleChats = append(eligibleChats, chat)
 			platform := PlatformDisplayName(chat)
 			byPlatform[platform] = append(byPlatform[platform], chat)
 		}
+	}
+	switch matrixSpaceGrouping(m.cfg.Matrix.SpaceGrouping) {
+	case "none":
+		return m.linkChatsIntoSpace(ctx, rootID, eligibleChats)
+	case "account":
+		return m.ensureAccountSpaces(ctx, rootID, eligibleChats)
+	case "platform-account":
+		return m.ensurePlatformAccountSpaces(ctx, rootID, byPlatform)
 	}
 	platforms := make([]string, 0, len(byPlatform))
 	for platform := range byPlatform {
@@ -215,7 +225,7 @@ func (m *MatrixClientSink) EnsurePortalSpaces(ctx context.Context, chats []Chat)
 	sort.Strings(platforms)
 	for _, platform := range platforms {
 		platformChats := byPlatform[platform]
-		spaceID, err := m.ensureSpace(ctx, "matrix_space:platform:"+platform, platform, "Beeper "+platform+" chats", platformAvatarMedia(platformChats[0]))
+		spaceID, err := m.ensureSpace(ctx, "matrix_space:platform:"+platform, platform, platform+" chats", platformAvatarMedia(platformChats[0]))
 		if err != nil {
 			return err
 		}
@@ -228,20 +238,105 @@ func (m *MatrixClientSink) EnsurePortalSpaces(ctx context.Context, chats []Chat)
 		sort.Slice(platformChats, func(i, j int) bool {
 			return roomDisplayName(m.cfg, platformChats[i]) < roomDisplayName(m.cfg, platformChats[j])
 		})
-		for _, chat := range platformChats {
-			roomID, ok, err := m.store.PortalRoomID(ctx, chat.ID)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				continue
-			}
-			if err := m.linkSpaceChild(ctx, spaceID, roomID, roomDisplayName(m.cfg, chat), false); err != nil {
-				return err
-			}
-			if err := m.linkSpaceParent(ctx, roomID, spaceID, true); err != nil {
-				return err
-			}
+		if err := m.linkChatsIntoSpace(ctx, spaceID, platformChats); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func matrixSpaceGrouping(raw string) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	switch mode {
+	case "", "platform", "messenger", "service":
+		return "platform"
+	case "platform-account", "platform_account", "team", "hierarchy", "hikiri", "hikiris":
+		return "platform-account"
+	case "account", "login", "channel":
+		return "account"
+	case "none", "flat", "off":
+		return "none"
+	default:
+		return "platform"
+	}
+}
+
+func (m *MatrixClientSink) ensurePlatformAccountSpaces(ctx context.Context, rootID string, byPlatform map[string][]Chat) error {
+	platforms := make([]string, 0, len(byPlatform))
+	for platform := range byPlatform {
+		platforms = append(platforms, platform)
+	}
+	sort.Strings(platforms)
+	for _, platform := range platforms {
+		platformChats := byPlatform[platform]
+		platformSpaceID, err := m.ensureSpace(ctx, "matrix_space:platform:"+platform, platform, platform+" chats", platformAvatarMedia(platformChats[0]))
+		if err != nil {
+			return err
+		}
+		if err := m.linkSpaceChild(ctx, rootID, platformSpaceID, platform, true); err != nil {
+			return err
+		}
+		if err := m.clearSpaceParent(ctx, platformSpaceID, rootID); err != nil {
+			return err
+		}
+		if err := m.ensureAccountSpaces(ctx, platformSpaceID, platformChats); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *MatrixClientSink) ensureAccountSpaces(ctx context.Context, parentID string, chats []Chat) error {
+	byAccount := make(map[string][]Chat)
+	for _, chat := range chats {
+		key := accountSpaceKey(chat)
+		byAccount[key] = append(byAccount[key], chat)
+	}
+	accounts := make([]string, 0, len(byAccount))
+	for account := range byAccount {
+		accounts = append(accounts, account)
+	}
+	sort.Strings(accounts)
+	for _, account := range accounts {
+		accountChats := byAccount[account]
+		spaceName := accountSpaceDisplayName(accountChats[0])
+		spaceID, err := m.ensureSpace(ctx, "matrix_space:account:"+account, spaceName, accountSpaceTopic(accountChats[0]), accountSpaceAvatarMedia(accountChats[0]))
+		if err != nil {
+			return err
+		}
+		if err := m.linkSpaceChild(ctx, parentID, spaceID, spaceName, true); err != nil {
+			return err
+		}
+		if err := m.clearSpaceParent(ctx, spaceID, parentID); err != nil {
+			return err
+		}
+		sort.Slice(accountChats, func(i, j int) bool {
+			return roomDisplayName(m.cfg, accountChats[i]) < roomDisplayName(m.cfg, accountChats[j])
+		})
+		if err := m.linkChatsIntoSpace(ctx, spaceID, accountChats); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *MatrixClientSink) linkChatsIntoSpace(ctx context.Context, spaceID string, chats []Chat) error {
+	sort.Slice(chats, func(i, j int) bool {
+		return roomDisplayName(m.cfg, chats[i]) < roomDisplayName(m.cfg, chats[j])
+	})
+	for _, chat := range chats {
+		roomID, ok, err := m.store.PortalRoomID(ctx, chat.ID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		if err := m.linkSpaceChild(ctx, spaceID, roomID, roomDisplayName(m.cfg, chat), false); err != nil {
+			return err
+		}
+		if err := m.linkSpaceParent(ctx, roomID, spaceID, true); err != nil {
+			return err
 		}
 	}
 	return nil

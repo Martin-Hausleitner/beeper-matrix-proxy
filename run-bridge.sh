@@ -17,7 +17,7 @@ if [[ "$BEEPER_MATRIX_PROXY_DIR" != "$PWD" && -f "$BEEPER_MATRIX_PROXY_DIR/.env"
   set +a
 fi
 export BEEPER_MATRIX_PROXY_BINARY="${BEEPER_MATRIX_PROXY_BINARY:-$BEEPER_MATRIX_PROXY_DIR/beeper-matrix-proxy}"
-export BEEPER_BRIDGE_NAME="${BEEPER_BRIDGE_NAME:-beeper-matrix-proxy}"
+export BEEPER_BRIDGE_NAME="${BEEPER_BRIDGE_NAME:-sh-vcvm-matrix}"
 export BEEPER_MATRIX_PROXY_AUTOBUILD="${BEEPER_MATRIX_PROXY_AUTOBUILD:-1}"
 export BEEPER_BBCTL="${BEEPER_BBCTL:-$(command -v bbctl || true)}"
 if [[ -z "$BEEPER_BBCTL" && -x "$HOME/.local/bin/bbctl" ]]; then

@@ -3,6 +3,7 @@ package beepersource
 import (
 	"context"
 	"errors"
+	"image/color"
 	"io"
 	"net/http"
 	"os"
@@ -410,7 +411,7 @@ func TestReconcileUsesPlatformAvatarForDirectPortalWhenParticipantAvatarsDisable
 	if len(matrix.avatars) != 1 {
 		t.Fatalf("expected one generated fallback avatar, got %d", len(matrix.avatars))
 	}
-	if !strings.HasPrefix(matrix.avatars[0].AssetID, "avatar-fallback-v2:!chat:beeper:whatsapp:") {
+	if !strings.HasPrefix(matrix.avatars[0].AssetID, "avatar-fallback-v17:!chat:beeper:single:whatsapp:") {
 		t.Fatalf("expected generated contact fallback avatar, got %#v", matrix.avatars[0])
 	}
 }
@@ -494,9 +495,9 @@ func TestReconcileResolvesRelativeBeeperAvatarURL(t *testing.T) {
 }
 
 func TestResolveBeeperAssetURLKeepsAbsoluteLocalPaths(t *testing.T) {
-	got := resolveBeeperAssetURL("http://localhost:23373", "/Users/mh/Library/Application%20Support/BeeperTexts/media/avatar.jpg")
+	got := resolveBeeperAssetURL("http://localhost:23373", "/tmp/BeeperTexts/media/avatar.jpg")
 
-	if got != "/Users/mh/Library/Application%20Support/BeeperTexts/media/avatar.jpg" {
+	if got != "/tmp/BeeperTexts/media/avatar.jpg" {
 		t.Fatalf("expected absolute local path to stay local, got %q", got)
 	}
 }
@@ -666,6 +667,85 @@ func TestReconcileCanForceAvatarRefreshWhenSyncValueMatches(t *testing.T) {
 	}
 	if len(matrix.avatars) != 1 {
 		t.Fatalf("expected forced avatar refresh, got %d avatars", len(matrix.avatars))
+	}
+}
+
+func TestReconcileChecksRemoteAvatarHashWhenSyncValueMatches(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{
+		ID:        "!chat:beeper",
+		AccountID: "signal",
+		Network:   "Signal",
+		Name:      "Hash Refresh",
+		AvatarURL: "localmxc://same-avatar-url",
+	}
+	if err := store.UpsertPortal(ctx, chat, "!existing:local", "cursor"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetValue(ctx, portalAvatarSyncKey(chat.ID), badgedAvatarAssetID(chat, "localmxc://same-avatar-url")); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeBeeperAPI{
+		chats:    []Chat{chat},
+		messages: map[string][]Message{"!chat:beeper": nil},
+		assets:   map[string]string{"localmxc://same-avatar-url": "changed-avatar-bytes"},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+
+	if err := svc.ReconcilePortalsOnly(ctx); err != nil {
+		t.Fatalf("ReconcilePortalsOnly returned error: %v", err)
+	}
+	if len(api.downloadedAssets) != 1 || api.downloadedAssets[0] != "localmxc://same-avatar-url" {
+		t.Fatalf("expected remote avatar to be downloaded for hash check, got %#v", api.downloadedAssets)
+	}
+	if len(matrix.avatars) != 1 {
+		t.Fatalf("expected existing portal avatar refresh, got %d avatars", len(matrix.avatars))
+	}
+	if matrix.avatars[0].ContentHash == "" {
+		t.Fatal("expected downloaded avatar to carry a content hash")
+	}
+}
+
+func TestReconcileRefreshesAvatarWhenBadgeStyleVersionChanges(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	avatarPath := writeTestAvatar(t, color.RGBA{R: 40, G: 80, B: 180, A: 255})
+	chat := Chat{
+		ID:        "!chat:beeper",
+		AccountID: "signal",
+		Network:   "Signal",
+		Name:      "Style Refresh",
+		AvatarURL: avatarPath,
+	}
+	if err := store.UpsertPortal(ctx, chat, "!existing:local", "cursor"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetValue(ctx, portalAvatarSyncKey(chat.ID), avatarPath); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeBeeperAPI{
+		chats:    []Chat{chat},
+		messages: map[string][]Message{"!chat:beeper": nil},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+
+	if err := svc.ReconcilePortalsOnly(ctx); err != nil {
+		t.Fatalf("ReconcilePortalsOnly returned error: %v", err)
+	}
+	if len(matrix.avatars) != 1 {
+		t.Fatalf("expected style-version avatar refresh, got %d avatars", len(matrix.avatars))
+	}
+	syncValue, err := store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(syncValue, "avatar-badge-v9:"+avatarPath+":") {
+		t.Fatalf("expected new badged avatar sync value, got %q", syncValue)
 	}
 }
 
@@ -1684,7 +1764,7 @@ func TestReconcileAvatarFallbackDoesNotMarkFailedRealAvatarSynced(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(syncValue, "avatar-fallback-v2:!chat:beeper:telegram:") {
+	if !strings.HasPrefix(syncValue, "avatar-fallback-v17:!chat:beeper:single:telegram:") {
 		t.Fatalf("expected failed real avatar to store generated fallback sync value, got %q", syncValue)
 	}
 

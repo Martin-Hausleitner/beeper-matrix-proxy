@@ -43,17 +43,17 @@ https://github.com/Martin-Hausleitner/beeper-matrix-proxy/tree/codex/matrix-arch
 
 Important code files:
 
-- [beepersource/avatar_badge.go](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/beepersource/avatar_badge.go)
-- [beepersource/avatar_badge_test.go](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/beepersource/avatar_badge_test.go)
-- [beepersource/brand_icon.go](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/beepersource/brand_icon.go)
-- [beepersource/brand_icon_test.go](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/beepersource/brand_icon_test.go)
-- [beepersource/contact_avatar.go](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/beepersource/contact_avatar.go)
-- [beepersource/contact_avatar_test.go](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/beepersource/contact_avatar_test.go)
-- [beepersource/assets/brand-icons/manifest.json](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/beepersource/assets/brand-icons/manifest.json)
-- [beepersource/service.go](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/beepersource/service.go)
-- [beepersource/config.go](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/beepersource/config.go)
-- [README.md](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/README.md)
-- [CHANGELOG.md](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/CHANGELOG.md)
+- `beepersource/avatar_badge.go`
+- `beepersource/avatar_badge_test.go`
+- `beepersource/brand_icon.go`
+- `beepersource/brand_icon_test.go`
+- `beepersource/contact_avatar.go`
+- `beepersource/contact_avatar_test.go`
+- `beepersource/assets/brand-icons/manifest.json`
+- `beepersource/service.go`
+- `beepersource/config.go`
+- `README.md`
+- `CHANGELOG.md`
 
 Dependency decision:
 
@@ -63,38 +63,26 @@ No runtime SVG renderer is used. Icon PNGs are checked in and embedded with Go e
 
 ## Evidence Already Produced
 
-Avatar state proof:
+Avatar state proof was produced locally in the private evidence folder:
 
-- [avatar-state-proof.json](</Users/mh/Library/CloudStorage/OneDrive-Personal/Anlagen/Matrix Archive Backup Sync/e2e-evidence/avatar-badge-mixed/avatar-state-proof.json>)
-- [avatar-badge-pixel-proof.json](</Users/mh/Library/CloudStorage/OneDrive-Personal/Anlagen/Matrix Archive Backup Sync/e2e-evidence/avatar-badge-mixed/avatar-badge-pixel-proof.json>)
-- [avatar-badge-gallery.png](</Users/mh/Library/CloudStorage/OneDrive-Personal/Anlagen/Matrix Archive Backup Sync/e2e-evidence/avatar-badge-mixed/avatar-badge-gallery.png>)
+- `e2e-evidence/avatar-badge-mixed/avatar-state-proof.json`
+- `e2e-evidence/avatar-badge-mixed/avatar-badge-pixel-proof.json`
+- `e2e-evidence/avatar-badge-mixed/avatar-badge-gallery.png`
 
-E2E proof:
+E2E proof was produced locally in the private evidence folder:
 
-- [matrix-bridge-e2e-2026-05-22.log](</Users/mh/Library/CloudStorage/OneDrive-Personal/Anlagen/Matrix Archive Backup Sync/e2e-evidence/matrix-bridge-e2e-2026-05-22.log>)
-- [matrix-bridge-e2e-2026-05-22.png](</Users/mh/Library/CloudStorage/OneDrive-Personal/Anlagen/Matrix Archive Backup Sync/e2e-evidence/matrix-bridge-e2e-2026-05-22.png>)
-- [benchmarks-2026-05-22.txt](</Users/mh/Library/CloudStorage/OneDrive-Personal/Anlagen/Matrix Archive Backup Sync/e2e-evidence/benchmarks-2026-05-22.txt>)
+- `e2e-evidence/matrix-bridge-e2e-2026-05-22.log`
+- `e2e-evidence/matrix-bridge-e2e-2026-05-22.png`
+- `e2e-evidence/benchmarks-2026-05-22.txt`
 
-Measured proof:
+Measured proof is kept in the private evidence folder and should not be copied
+into public commits. The public repo should only describe the verification
+method, not exact room counts, account mix, screenshots, or private archive
+sizes.
 
-- 54 native Matrix avatar media files sampled from Synapse: 18 WhatsApp, 18 Telegram, 18 Signal.
-- 54/54 sampled avatars downloaded from native Matrix `m.room.avatar` state.
-- 54/54 sampled avatars were PNG media.
-- Pixel proof found badge signatures across WhatsApp, Telegram, and Signal.
-- Local Synapse E2E passed, including the 30/30 checklist.
-
-Avatar v2 proof from 2026-05-23:
-
-- Private evidence folder:
-  [avatar-v2](</Users/mh/Library/CloudStorage/OneDrive-Personal/Anlagen/Matrix Archive Backup Sync/e2e-evidence/avatar-v2>)
-- Portals checked: 828.
-- Matrix rooms with avatar state visible to the archive user: 679.
-- Expected inaccessible/skipped Matrix-source rooms: 149.
-- Media cache entries after refresh: 1,052.
-- `avatar-badge-v2` cached uploads: 403.
-- `avatar-fallback-v2` cached uploads: 258.
-- `platform-logo-v4` cached uploads: 4.
-- MXC avatar samples downloaded for proof gallery: 20.
+Avatar v2 proof is stored locally under `e2e-evidence/avatar-v2`; publish only
+sanitized summaries unless a release artifact has been reviewed for private
+room names, account identifiers, screenshots, and contact data.
 
 ## Current Avatar Behavior
 
@@ -126,7 +114,7 @@ contacts:
       - "!example:100.120.120.120"
     sender_ids:
       - "@example:whatsapp"
-    avatar_file: "/Users/mh/Pictures/Contact Avatars/example-person.jpg"
+    avatar_file: "~/Pictures/Contact Avatars/example-person.jpg"
     confidence: "manual"
 ```
 
@@ -134,19 +122,19 @@ contacts:
 
 Relevant local skills:
 
-- [apple-photos-local-search](/Users/mh/.openclaw/workspace/skills/apple-photos-local-search/SKILL.md)
+- `apple-photos-local-search`
   Read-only Apple Photos search using local Photos indexes, OCR, metadata, and derivative paths. Useful for finding candidate photos, not for automatic identity matching.
 
-- [google-deep-researcher](/Users/mh/.hermes/skills/software-development/google-deep-researcher/SKILL.md)
+- `google-deep-researcher`
   Useful for running Gemini/Google Deep Research in a real browser profile.
 
-- [hidden-brave-comet-deep-research](/Users/mh/.hermes/skills/software-development/hidden-brave-comet-deep-research/SKILL.md)
+- `hidden-brave-comet-deep-research`
   Another browser-based Deep Research route.
 
-- [browser-profile-routing](/Users/mh/.openclaw/workspace/skills/browser-profile-routing/SKILL.md)
+- `browser-profile-routing`
   Useful for choosing the right local browser/profile safely.
 
-- [popular-web-designs](/Users/mh/.hermes/skills/creative/popular-web-designs/SKILL.md)
+- `popular-web-designs`
   Useful for visual polish references.
 
 ## Best Next Implementation Plan
@@ -161,7 +149,7 @@ Recommended source strategy:
 2. Use Simple Icons as a fallback for SVG brand marks.
 3. Store a local icon manifest with source URL, license, brand color, and update date.
 4. Render icons into PNG during asset preparation, not during every sync.
-5. Use stable cache keys like `platform-logo-v4:<platform>` and `avatar-badge-v2:<sourceHash>:<platformIconHash>`.
+5. Use stable cache keys like `platform-logo-v5:<platform>` and `avatar-badge-v2:<sourceHash>:<platformIconHash>`.
 
 Design direction:
 

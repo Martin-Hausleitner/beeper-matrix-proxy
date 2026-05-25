@@ -4,6 +4,8 @@ config.yaml
 *.db-shm
 *.db-wal
 logs/
+.hermes/
+node_modules/
 *.log
 .env
 sh-vcvm-matrix

@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "icons:creator": "node scripts/fetch_creator_platform_icons.cjs",
+    "icons:appstore": "node scripts/fetch_official_app_store_icons.cjs",
+    "icons:gallery": "node scripts/generate_avatar_badge_gallery.cjs",
+    "icons:refresh": "npm run icons:creator && npm run icons:appstore && npm run icons:gallery"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
+  }
+}

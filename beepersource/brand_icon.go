@@ -5,6 +5,8 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -19,14 +21,16 @@ type brandIconManifestFile struct {
 }
 
 type brandIcon struct {
-	Key         string `json:"key"`
-	Label       string `json:"label"`
-	BrandColor  string `json:"brand_color"`
-	PNG         string `json:"png"`
-	SHA256      string `json:"sha256"`
-	Source      string `json:"source"`
-	LicenseNote string `json:"license_note"`
-	Fallback    bool   `json:"fallback"`
+	Key            string `json:"key"`
+	Label          string `json:"label"`
+	BrandColor     string `json:"brand_color"`
+	PNG            string `json:"png"`
+	SHA256         string `json:"sha256"`
+	Source         string `json:"source"`
+	SourceKind     string `json:"source_kind"`
+	SourcePriority int    `json:"source_priority"`
+	LicenseNote    string `json:"license_note"`
+	Fallback       bool   `json:"fallback"`
 }
 
 var (
@@ -49,11 +53,35 @@ func brandIconPNGByKey(key string) ([]byte, bool) {
 	if !ok {
 		return nil, false
 	}
+	if body, ok := localBrandIconOverride(icon.Key); ok {
+		return body, true
+	}
 	body, err := brandIconFS.ReadFile("assets/brand-icons/" + icon.PNG)
 	if err != nil {
 		return nil, false
 	}
 	return body, true
+}
+
+func localBrandIconOverride(key string) ([]byte, bool) {
+	for _, dir := range localBrandIconOverrideDirs() {
+		body, err := os.ReadFile(filepath.Join(dir, brandIconKey(key)+".png"))
+		if err == nil && len(body) > 0 {
+			return body, true
+		}
+	}
+	return nil, false
+}
+
+func localBrandIconOverrideDirs() []string {
+	var dirs []string
+	if dir := strings.TrimSpace(os.Getenv("BEEPER_MATRIX_PROXY_BRAND_ICON_DIR")); dir != "" {
+		dirs = append(dirs, dir)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dirs = append(dirs, filepath.Join(home, "Library", "Application Support", "matrix-archive-sync", "brand-icons"))
+	}
+	return dirs
 }
 
 func brandIconKey(raw string) string {
@@ -88,6 +116,46 @@ func brandIconKey(raw string) string {
 		return "x"
 	case "linkedin":
 		return "linkedin"
+	case "creatorhero":
+		return "creatorhero"
+	case "onlyfans":
+		return "onlyfans"
+	case "fansly":
+		return "fansly"
+	case "fanvue":
+		return "fanvue"
+	case "mym", "mymfans", "mym.fans":
+		return "mymfans"
+	case "fancentro":
+		return "fancentro"
+	case "slushy":
+		return "slushy"
+	case "uncove":
+		return "uncove"
+	case "subscribestar":
+		return "subscribestar"
+	case "maloum":
+		return "maloum"
+	case "dfans":
+		return "dfans"
+	case "manyvids":
+		return "manyvids"
+	case "unlockd":
+		return "unlockd"
+	case "sospoilt":
+		return "sospoilt"
+	case "xpanded":
+		return "xpanded"
+	case "revealme":
+		return "revealme"
+	case "admireme":
+		return "admireme"
+	case "camsoda":
+		return "camsoda"
+	case "stacked", "stacked.com":
+		return "stacked"
+	case "fanview":
+		return "fanview"
 	default:
 		return key
 	}

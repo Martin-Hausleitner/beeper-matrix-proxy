@@ -1,0 +1,38 @@
+avatar_badge:
+  # bottom-right is the default and matches the native app-badge look.
+  # Other values: bottom-left, top-right, top-left.
+  position: bottom-right
+
+  # circle-safe keeps the full badge inside a hard circular Cinny/Element crop.
+  # edge is available if your client does not clip avatars to a circle.
+  layout: circle-safe
+
+  # rounded keeps app-icon geometry; circle is available for fully round badges.
+  shape: rounded
+
+  # Percent of the 256px avatar canvas.
+  size_percent: 34
+
+  # Percent inset from the selected corner in edge mode.
+  inset_percent: 0
+
+  # Simple soft shadow only, no white ring.
+  shadow: true
+
+group_avatar:
+  # auto creates Beeper-style clustered initials bubbles for group rooms.
+  # initials forces the old single initials fallback.
+  style: auto
+
+  # Number of visible people in generated group avatars.
+  max_participants: 10
+
+  # Higher values pull the participant bubbles closer together.
+  overlap_percent: 34
+
+  # Hide yourself from generated group bubbles when the Beeper participant list
+  # contains your own account.
+  exclude_self: true
+
+  # Optional Beeper sender IDs / display aliases for your own accounts.
+  self_ids: []

@@ -101,23 +101,7 @@ func brandAppIconPNG(platform string, bgHex string) ([]byte, bool) {
 	if !ok {
 		return nil, false
 	}
-	glyph, err := png.Decode(bytes.NewReader(body))
-	if err != nil {
-		return nil, false
-	}
-	bg := parseHexColor(firstNonEmpty(icon.BrandColor, bgHex))
-	img := image.NewRGBA(image.Rect(0, 0, 256, 256))
-	draw.Draw(img, img.Bounds(), &image.Uniform{C: bg}, image.Point{}, draw.Src)
-	scaled := image.NewRGBA(image.Rect(0, 0, 150, 150))
-	drawFit(scaled, glyph)
-	for y := 0; y < scaled.Bounds().Dy(); y++ {
-		for x := 0; x < scaled.Bounds().Dx(); x++ {
-			blendAt(img, x+53, y+53, scaled.At(x, y))
-		}
-	}
-	var out bytes.Buffer
-	_ = png.Encode(&out, img)
-	return out.Bytes(), true
+	return body, true
 }
 
 func parseHexColor(raw string) color.RGBA {
