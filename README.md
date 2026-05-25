@@ -36,6 +36,16 @@ compatible Matrix server:
 - [docs/examples/avatar-badge.yaml](docs/examples/avatar-badge.yaml)
 - [infra/avatar-configurator/index.html](infra/avatar-configurator/index.html)
 
+### Avatar Sync Screenshots
+
+The screenshots below are generated from public-safe demo data in the local
+configurator. They show the same native Matrix `m.room.avatar` output that
+Cinny and Element receive from the sync.
+
+| Configurator | Single visible member | 1-10 group layouts |
+|---|---|---|
+| ![Avatar configurator overview](docs/assets/avatar-configurator-overview.png) | ![Single visible participant fallback](docs/assets/avatar-single-visible-fallback.png) | ![Group avatar gallery from one to ten participants](docs/assets/avatar-gallery-1-to-10.png) |
+
 ## Matrix Archive Backup Sync
 
 `matrix-archive-sync` is a standalone Rust CLI for creating a readable,
