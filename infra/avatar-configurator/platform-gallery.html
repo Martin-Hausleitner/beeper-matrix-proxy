@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Avatar Platform Gallery</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #050608;
+        --panel: #151821;
+        --panel-2: #1c202b;
+        --line: #2e3442;
+        --text: #f6f8fc;
+        --muted: #a1a8b5;
+        --accent: #61d996;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Poppins, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1560px, calc(100vw - 44px));
+        margin: 0 auto;
+        padding: 28px 0 42px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 22px;
+        margin-bottom: 22px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 32px;
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: 22px;
+        letter-spacing: 0;
+      }
+
+      .sub {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+        max-width: 820px;
+      }
+
+      .pill {
+        border: 1px solid #2d5e45;
+        border-radius: 999px;
+        color: #8cf0b8;
+        background: #102419;
+        padding: 8px 13px;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      section {
+        margin: 28px 0 0;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        min-height: 272px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 14px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 12px;
+      }
+
+      .card-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .app-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        background: #0d1016;
+        object-fit: cover;
+      }
+
+      .label {
+        display: grid;
+        gap: 2px;
+      }
+
+      .name {
+        font-weight: 800;
+        font-size: 15px;
+      }
+
+      .kind {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .samples {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        align-items: center;
+        gap: 10px;
+      }
+
+      .sample {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+      }
+
+      canvas {
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+      }
+
+      .caption {
+        min-height: 30px;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.25;
+        text-align: center;
+      }
+
+      .profile-row {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .profile {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 15px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .profile canvas {
+        width: 126px;
+        height: 126px;
+      }
+
+      .proof {
+        color: #74f0a9;
+        font-size: 11px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        line-height: 1.45;
+      }
+
+      .source {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      @media (max-width: 1200px) {
+        .grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 820px) {
+        header,
+        .section-head {
+          display: grid;
+        }
+
+        .grid,
+        .profile-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Matrix Avatar Platform Proof Gallery</h1>
+          <p class="sub">Public-safe Demo-Avatare: pro Plattform drei Varianten fuer Cinny/Element-Room-Avatare. Beeper/BIPA native bleibt absichtlich unbadged.</p>
+        </div>
+        <div class="pill" id="status">offline renderer</div>
+      </header>
+
+      <section id="messaging">
+        <div class="section-head">
+          <h2>Messaging & Social</h2>
+          <p class="sub">Single initials, weighted group bubbles, and pseudo-profile photo with messenger badge.</p>
+        </div>
+        <div class="grid" id="messagingGrid"></div>
+      </section>
+
+      <section id="creator">
+        <div class="section-head">
+          <h2>Creator & Platform Icons</h2>
+          <p class="sub">The same renderer uses local/offline icon assets from the repository.</p>
+        </div>
+        <div class="grid" id="creatorGrid"></div>
+      </section>
+
+      <section id="profiles">
+        <div class="section-head">
+          <h2>Client Profiles</h2>
+          <p class="sub">Cinny shows messenger badges and groups; Beeper/BIPA native keeps normal profile pictures.</p>
+        </div>
+        <div class="profile-row" id="profileGrid"></div>
+      </section>
+    </main>
+
+    <script src="./icon-manifest.js"></script>
+    <script>
+      const iconBase = "../../beepersource/assets/brand-icons/icons";
+      const iconCache = new Map();
+      const messagingKeys = ["whatsapp", "signal", "telegram", "matrix", "email", "imessage", "messenger", "instagram", "discord", "slack", "x", "linkedin", "beeper"];
+      const profileNames = ["cinny", "element", "generic", "beeper-native", "custom"];
+      const participants = [
+        { name: "Anna Novak", messageCount: 240 },
+        { name: "Ben Berger", messageCount: 128 },
+        { name: "Clara Chen", messageCount: 54 },
+        { name: "David Duran", messageCount: 17 },
+        { name: "Eva Eder", messageCount: 6 },
+      ];
+
+      let manifest = [];
+      let labelByKey = {};
+      let kindByKey = {};
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function hash(input) {
+        let out = 2166136261;
+        for (let i = 0; i < input.length; i += 1) {
+          out ^= input.charCodeAt(i);
+          out = Math.imul(out, 16777619);
+        }
+        return out >>> 0;
+      }
+
+      function hsl(name, offset = 0) {
+        const hue = (hash(name) + offset) % 360;
+        return `hsl(${hue} 68% 58%)`;
+      }
+
+      function initials(name) {
+        const clean = String(name).replace(/[^A-Za-z0-9 ]/g, " ").trim();
+        const parts = clean.split(/\s+/).filter(Boolean);
+        return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : (parts[0] || "?").slice(0, 2)).toUpperCase();
+      }
+
+      function loadIcon(key) {
+        if (iconCache.has(key)) return iconCache.get(key);
+        const img = new Image();
+        const promise = new Promise((resolve) => {
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(null);
+        });
+        img.src = `${iconBase}/${key}.png`;
+        iconCache.set(key, promise);
+        return promise;
+      }
+
+      function drawRoundImage(ctx, image, x, y, size, radius) {
+        ctx.save();
+        roundedRect(ctx, x, y, size, size, radius);
+        ctx.clip();
+        ctx.drawImage(image, x, y, size, size);
+        ctx.restore();
+      }
+
+      function roundedRect(ctx, x, y, w, h, r) {
+        const radius = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.arcTo(x + w, y, x + w, y + h, radius);
+        ctx.arcTo(x + w, y + h, x, y + h, radius);
+        ctx.arcTo(x, y + h, x, y, radius);
+        ctx.arcTo(x, y, x + w, y, radius);
+        ctx.closePath();
+      }
+
+      function drawInitial(ctx, name, x, y, size, fontScale = 0.43) {
+        const grad = ctx.createLinearGradient(x, y, x + size, y + size);
+        grad.addColorStop(0, hsl(name, 0));
+        grad.addColorStop(1, hsl(name, 48));
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.font = `800 ${Math.round(size * fontScale)}px Poppins, Inter, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(initials(name), x + size / 2, y + size / 2 + 2);
+      }
+
+      function drawBadge(ctx, icon, key, x, y, size) {
+        if (!icon) return;
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,.35)";
+        ctx.shadowBlur = size * 0.08;
+        ctx.shadowOffsetY = size * 0.03;
+        roundedRect(ctx, x, y, size, size, size * 0.22);
+        ctx.fillStyle = "#0f1218";
+        ctx.fill();
+        ctx.clip();
+        ctx.drawImage(icon, x, y, size, size);
+        ctx.restore();
+      }
+
+      async function drawSingle(canvas, key) {
+        const ctx = canvas.getContext("2d");
+        const icon = await loadIcon(key);
+        ctx.clearRect(0, 0, 256, 256);
+        drawInitial(ctx, labelByKey[key] || key, 0, 0, 256, 0.42);
+        drawBadge(ctx, icon, key, 184, 184, 58);
+      }
+
+      async function drawGroup(canvas, key) {
+        const ctx = canvas.getContext("2d");
+        const icon = await loadIcon(key);
+        ctx.clearRect(0, 0, 256, 256);
+        ctx.fillStyle = "#11151d";
+        ctx.beginPath();
+        ctx.arc(128, 128, 128, 0, Math.PI * 2);
+        ctx.fill();
+        const total = Math.max(1, participants[0].messageCount);
+        const layout = [
+          { x: 26, y: 50, base: 115, person: participants[0] },
+          { x: 124, y: 36, base: 94, person: participants[1] },
+          { x: 112, y: 124, base: 86, person: participants[2] },
+          { x: 48, y: 143, base: 72, person: participants[3] },
+        ];
+        for (const item of layout) {
+          const weight = Math.sqrt(item.person.messageCount / total);
+          const size = clamp(item.base * (0.86 + weight * 0.22), 66, 126);
+          drawInitial(ctx, item.person.name, item.x, item.y, size, 0.38);
+        }
+        drawBadge(ctx, icon, key, 185, 185, 58);
+      }
+
+      async function drawPhoto(canvas, key, withBadge = true) {
+        const ctx = canvas.getContext("2d");
+        const icon = await loadIcon(key);
+        ctx.clearRect(0, 0, 256, 256);
+        const grad = ctx.createRadialGradient(86, 56, 16, 128, 128, 178);
+        grad.addColorStop(0, hsl(`${key}-photo`, 24));
+        grad.addColorStop(0.58, hsl(`${key}-photo`, 78));
+        grad.addColorStop(1, "#1f2430");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(128, 128, 128, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,.86)";
+        ctx.beginPath();
+        ctx.arc(128, 104, 46, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(128, 188, 72, 54, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (withBadge) drawBadge(ctx, icon, key, 184, 184, 58);
+      }
+
+      function createCanvas() {
+        const canvas = document.createElement("canvas");
+        canvas.width = 256;
+        canvas.height = 256;
+        return canvas;
+      }
+
+      async function platformCard(key) {
+        const card = document.createElement("article");
+        card.className = "card";
+        const label = labelByKey[key] || key;
+        card.innerHTML = `
+          <div class="card-head">
+            <img class="app-icon" alt="" src="${iconBase}/${key}.png" />
+            <div class="label">
+              <div class="name">${label}</div>
+              <div class="kind">${kindByKey[key] || "local icon"}</div>
+            </div>
+          </div>
+          <div class="samples"></div>
+          <div class="source">3 Varianten: Single, Gruppe, Profilfoto-Demo</div>
+        `;
+        const samples = card.querySelector(".samples");
+        const variants = [
+          ["single", drawSingle],
+          ["group", drawGroup],
+          ["photo", drawPhoto],
+        ];
+        for (const [caption, draw] of variants) {
+          const sample = document.createElement("div");
+          sample.className = "sample";
+          const canvas = createCanvas();
+          sample.append(canvas);
+          const cap = document.createElement("div");
+          cap.className = "caption";
+          cap.textContent = caption;
+          sample.append(cap);
+          samples.append(sample);
+          await draw(canvas, key);
+        }
+        return card;
+      }
+
+      async function profileCard(profile) {
+        const card = document.createElement("article");
+        card.className = "profile";
+        const canvas = createCanvas();
+        const key = profile === "beeper-native" ? "beeper" : "whatsapp";
+        card.innerHTML = `<h2>${profile}</h2>`;
+        card.append(canvas);
+        const proof = document.createElement("div");
+        proof.className = "proof";
+        if (profile === "beeper-native") {
+          await drawPhoto(canvas, "beeper", false);
+          proof.textContent = "normal profile picture\nno generated badge";
+        } else if (profile === "element") {
+          await drawSingle(canvas, key);
+          proof.textContent = "circle-safe badge\nElement crop profile";
+        } else if (profile === "generic") {
+          await drawGroup(canvas, key);
+          proof.textContent = "conservative group\nmax 6 visible";
+        } else if (profile === "custom") {
+          await drawGroup(canvas, "telegram");
+          proof.textContent = "manual settings\nposition/size/tuning";
+        } else {
+          await drawGroup(canvas, key);
+          proof.textContent = "Cinny group bubbles\nMessenger badge visible";
+        }
+        card.append(proof);
+        return card;
+      }
+
+      async function render() {
+        manifest = window.BRAND_ICON_MANIFEST.icons;
+        labelByKey = Object.fromEntries(manifest.map((entry) => [entry.key, entry.label]));
+        kindByKey = Object.fromEntries(manifest.map((entry) => [entry.key, entry.source_kind]));
+        const creatorKeys = manifest.map((entry) => entry.key).filter((key) => !messagingKeys.includes(key));
+        for (const key of messagingKeys) {
+          document.querySelector("#messagingGrid").append(await platformCard(key));
+        }
+        for (const key of creatorKeys) {
+          document.querySelector("#creatorGrid").append(await platformCard(key));
+        }
+        for (const profile of profileNames) {
+          document.querySelector("#profileGrid").append(await profileCard(profile));
+        }
+        document.querySelector("#status").textContent = `${manifest.length} platforms / ${manifest.length * 3} avatar examples`;
+      }
+
+      render();
+    </script>
+  </body>
+</html>

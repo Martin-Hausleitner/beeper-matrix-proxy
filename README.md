@@ -46,6 +46,25 @@ Cinny and Element receive from the sync.
 |---|---|---|---|
 | ![Avatar configurator overview](docs/assets/avatar-configurator-overview.png) | ![Single visible participant fallback](docs/assets/avatar-single-visible-fallback.png) | ![Group avatar gallery from one to ten participants](docs/assets/avatar-gallery-1-to-10.png) | ![Avatar client profile mode](docs/assets/avatar-client-profiles.png) |
 
+### Platform Proof Gallery
+
+The platform gallery is rendered from the same local/offline icon set and demo
+avatar rules. Each platform card shows three public-safe examples: a single
+initials avatar, a weighted group-bubble avatar, and a pseudo-profile-photo
+avatar with the platform badge. The full gallery currently covers 33 platforms
+and 99 generated avatar examples.
+
+Open the local proof page here:
+[infra/avatar-configurator/platform-gallery.html](infra/avatar-configurator/platform-gallery.html)
+
+| Messaging/social platforms | Creator/platform icons |
+|---|---|
+| ![Messaging and social avatar platform gallery](docs/assets/avatar-platform-gallery-messaging.png) | ![Creator and platform avatar gallery](docs/assets/avatar-platform-gallery-creator.png) |
+
+| Client profile comparison | Full public-safe proof sheet |
+|---|---|
+| ![Avatar client profile comparison](docs/assets/avatar-platform-gallery-profiles.png) | ![Full avatar platform proof gallery](docs/assets/avatar-platform-gallery-full.png) |
+
 The sync can target a Matrix client profile (`cinny`, `element`, `generic`,
 `beeper-native`/`bipa-native`, or `custom`) so the same portable renderer uses
 badge sizes and group-bubble density that fit the main client UI. Matrix room
