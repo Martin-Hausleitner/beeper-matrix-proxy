@@ -28,7 +28,7 @@ import (
 
 const avatarBadgeSize = 256
 const avatarBadgeCacheVersion = "avatar-badge-v9"
-const contactFallbackCacheVersion = "avatar-fallback-v17"
+const contactFallbackCacheVersion = "avatar-fallback-v18"
 const uiAvatarFontSize = 0.4375
 
 type avatarBadgeOptions struct {
@@ -502,8 +502,7 @@ type groupAvatarParticipant struct {
 
 func drawGroupFallbackBase(dst *image.RGBA, chat Chat, opts avatarBadgeOptions) {
 	opts = opts.normalized()
-	drawInitialsGradient(dst, contactFallbackGradient(chat))
-	fillRounded(dst, 0, 0, avatarBadgeSize, avatarBadgeSize, avatarBadgeSize/4, color.RGBA{R: 0, G: 0, B: 0, A: 34})
+	drawGroupAvatarNeutralBackground(dst)
 	participants := groupAvatarParticipants(chat, opts)
 	bubbles := groupAvatarBubbleLayoutForParticipantsWithOptions(participants, opts.groupAvatarOverlapPercent, opts)
 	for _, bubble := range bubbles {
@@ -512,6 +511,14 @@ func drawGroupFallbackBase(dst *image.RGBA, chat Chat, opts avatarBadgeOptions) 
 	for _, bubble := range bubbles {
 		drawInitialsInCircleWithColor(dst, initialsFromLabel(bubble.label), bubble.cx, bubble.cy, bubble.r, avatarInitialsTextColor())
 	}
+}
+
+func drawGroupAvatarNeutralBackground(dst *image.RGBA) {
+	drawInitialsGradient(dst, avatarGradient{
+		top:    parseHexColor("#f8f9fb"),
+		bottom: parseHexColor("#d9dee8"),
+	})
+	fillRounded(dst, 0, 0, avatarBadgeSize, avatarBadgeSize, avatarBadgeSize/4, color.RGBA{R: 255, G: 255, B: 255, A: 18})
 }
 
 func drawSingleParticipantGroupFallbackBase(dst *image.RGBA, participant groupAvatarParticipant) {

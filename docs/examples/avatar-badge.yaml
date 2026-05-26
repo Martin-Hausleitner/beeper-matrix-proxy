@@ -1,7 +1,7 @@
 avatar_badge:
   # Client profile presets:
   # - cinny: near-corner badges and dense group bubbles for Cinny room lists.
-  # - element: slightly larger badges for Element Web/Desktop crops.
+  # - element: circle-safe badges for Element Web/Desktop's round crops.
   # - generic: conservative Matrix-client defaults.
   # - beeper-native / bipa-native: leave Beeper/BIPA-style avatars alone.
   # - custom: use only the explicit values below.
@@ -22,11 +22,11 @@ avatar_badge:
   # rounded keeps app-icon geometry; circle is available for fully round badges.
   shape: rounded
 
-  # Percent of the 256px avatar canvas. The Cinny profile default is 26.
-  size_percent: 26
+  # Percent of the 256px avatar canvas. The Cinny profile default is 28.
+  size_percent: 28
 
-  # Keep the app icon close to the lower-right corner.
-  inset_percent: 1
+  # Keep the app icon directly on the lower-right visual edge in Cinny.
+  inset_percent: 0
 
   # The Cinny profile keeps this off for a flatter app-icon badge.
   shadow: false

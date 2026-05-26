@@ -109,6 +109,20 @@ func TestAvatarBadgeEdgeLayoutSitsCloserToCornerThanCircleSafe(t *testing.T) {
 	}
 }
 
+func TestAvatarClientProfilesPlaceBadgesForCinnyAndElement(t *testing.T) {
+	cinny := avatarBadgeOptions{layout: "edge", shape: "rounded", sizePercent: 28, insetPercent: 0, position: "bottom-right"}
+	cinnyX, cinnyY, cinnySize := avatarBadgeRect(cinny)
+	element := avatarBadgeOptions{layout: "circle-safe", shape: "rounded", sizePercent: 26, insetPercent: 4, position: "bottom-right"}
+	elementX, elementY, elementSize := avatarBadgeRect(element)
+
+	if cinnyX <= elementX || cinnyY <= elementY {
+		t.Fatalf("expected Cinny edge badge to sit closer to the bottom-right corner than Element circle-safe badge, cinny=(%d,%d) element=(%d,%d)", cinnyX, cinnyY, elementX, elementY)
+	}
+	if cinnySize <= elementSize {
+		t.Fatalf("expected Cinny badge to be at least as prominent as Element badge, cinny=%d element=%d", cinnySize, elementSize)
+	}
+}
+
 func TestGeneratedGroupAvatarUsesParticipantBubblesAndBadge(t *testing.T) {
 	opts := defaultAvatarBadgeOptions()
 	opts.shadow = false
@@ -131,8 +145,8 @@ func TestGeneratedGroupAvatarUsesParticipantBubblesAndBadge(t *testing.T) {
 	}
 
 	media := generatedContactAvatarMediaWithOptions(chat, opts)
-	if !strings.HasPrefix(media.AssetID, "avatar-fallback-v17:!group:beeper:group-4-") || !strings.Contains(media.AssetID, "excludeself") {
-		t.Fatalf("expected group-aware v17 fallback asset id, got %q", media.AssetID)
+	if !strings.HasPrefix(media.AssetID, "avatar-fallback-v18:!group:beeper:group-4-") || !strings.Contains(media.AssetID, "excludeself") {
+		t.Fatalf("expected group-aware v18 fallback asset id, got %q", media.AssetID)
 	}
 	labels := groupAvatarParticipantLabels(chat, opts)
 	if len(labels) != 4 || labels[0] != "Anna Novak" || labels[3] != "+2" {
@@ -153,6 +167,9 @@ func TestGeneratedGroupAvatarUsesParticipantBubblesAndBadge(t *testing.T) {
 	}
 	if samples[0] == samples[1] || samples[0] == samples[2] || samples[1] == samples[3] {
 		t.Fatalf("expected participant bubbles to use distinct deterministic colors, got %#v", samples)
+	}
+	if bg := rgbaAt(img, 14, 14); luminance(bg) < 210 || colorDistance(bg.R, bg.G) > 8 || colorDistance(bg.G, bg.B) > 16 {
+		t.Fatalf("expected neutral light gray group background, got %#v", bg)
 	}
 	if rgbaAt(img, 221, 221) == samples[3] {
 		t.Fatal("expected platform badge to affect the lower-right corner")
@@ -448,4 +465,11 @@ func luminance(c color.RGBA) int {
 
 func hexColor(c color.RGBA) string {
 	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
+}
+
+func colorDistance(a, b uint8) int {
+	if a > b {
+		return int(a - b)
+	}
+	return int(b - a)
 }

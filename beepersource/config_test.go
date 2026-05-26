@@ -35,7 +35,7 @@ func TestDefaultConfigIsLocalBidirectionalAndSafe(t *testing.T) {
 	if cfg.Matrix.RoomNameIncludePlatform {
 		t.Fatal("expected room names to omit platform labels by default")
 	}
-	if cfg.Matrix.AvatarClientProfile != "cinny" || cfg.Matrix.AvatarBadgeLayout != "edge" || cfg.Matrix.AvatarBadgeSizePercent != 26 || cfg.Matrix.AvatarBadgeInsetPercent != 1 || cfg.Matrix.GroupAvatarMaxParticipants != 10 {
+	if cfg.Matrix.AvatarClientProfile != "cinny" || cfg.Matrix.AvatarBadgeLayout != "edge" || cfg.Matrix.AvatarBadgeSizePercent != 28 || cfg.Matrix.AvatarBadgeInsetPercent != 0 || cfg.Matrix.GroupAvatarMaxParticipants != 10 {
 		t.Fatalf("expected Cinny avatar profile defaults, got %#v", cfg.Matrix)
 	}
 }
@@ -175,7 +175,7 @@ avatar_badge:
 
 	cfg := DefaultConfig()
 
-	if cfg.Matrix.AvatarClientProfile != "element" || cfg.Matrix.AvatarBadgeSizePercent != 24 || cfg.Matrix.AvatarBadgeInsetPercent != 3 {
+	if cfg.Matrix.AvatarClientProfile != "element" || cfg.Matrix.AvatarBadgeSizePercent != 26 || cfg.Matrix.AvatarBadgeInsetPercent != 4 {
 		t.Fatalf("expected empty profile env to leave file profile intact, got %#v", cfg.Matrix)
 	}
 }

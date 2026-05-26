@@ -573,8 +573,8 @@ Felix Faber | 2</textarea>
 
       function applyClientProfile(profile) {
         const profiles = {
-          cinny: { badgeLayout: "edge", groupStyle: "auto", maxParticipants: 10, overlap: 34, badgeSize: 26, badgeInset: 1, fallbackBadges: true },
-          element: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 10, overlap: 32, badgeSize: 24, badgeInset: 3, fallbackBadges: true },
+          cinny: { badgeLayout: "edge", groupStyle: "auto", maxParticipants: 10, overlap: 34, badgeSize: 28, badgeInset: 0, fallbackBadges: true },
+          element: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 10, overlap: 32, badgeSize: 26, badgeInset: 4, fallbackBadges: true },
           generic: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 6, overlap: 30, badgeSize: 26, badgeInset: 4, fallbackBadges: true },
           "beeper-native": { badgeLayout: "circle-safe", groupStyle: "initials", maxParticipants: 2, overlap: 0, badgeSize: 22, badgeInset: 3, fallbackBadges: false },
         };
@@ -986,11 +986,6 @@ Felix Faber | 2</textarea>
         const ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, 256, 256);
         const participants = participantsOverride || participantList();
-        const bg = ctx.createLinearGradient(28, 20, 230, 238);
-        bg.addColorStop(0, "#262b35");
-        bg.addColorStop(1, "#07080c");
-        ctx.fillStyle = bg;
-        ctx.fillRect(0, 0, 256, 256);
 
         if (config.groupStyle === "initials" || participants.length < 2) {
           const name = participants[0]?.name || "Projektgruppe";
@@ -1006,6 +1001,7 @@ Felix Faber | 2</textarea>
           ctx.textBaseline = "middle";
           ctx.fillText(initials(name), 128, 132);
         } else {
+          drawNeutralGroupBackground(ctx);
           const bubbles = bubbleLayout(participants, config.overlap, config);
           bubbles.forEach((bubble, index) => {
             ctx.save();
@@ -1048,6 +1044,17 @@ Felix Faber | 2</textarea>
           ctx.drawImage(icon, rect.x, rect.y, rect.size, rect.size);
           ctx.restore();
         }
+      }
+
+      function drawNeutralGroupBackground(ctx) {
+        const bg = ctx.createLinearGradient(28, 20, 230, 238);
+        bg.addColorStop(0, "#f8f9fb");
+        bg.addColorStop(1, "#d9dee8");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, 256, 256);
+        ctx.fillStyle = "rgba(255,255,255,.07)";
+        roundedRect(ctx, 0, 0, 256, 256, 64);
+        ctx.fill();
       }
 
       function avatarLayoutMetrics(participants, config) {

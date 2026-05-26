@@ -20,6 +20,26 @@ It does **not** patch Beeper Desktop. The bridge tries to speak the data contrac
 that Beeper already understands: room features, Matrix events, media metadata,
 portal rooms, and appservice websocket traffic.
 
+## Native Beeper Desktop Bridgev2 Icon
+
+Beeper Desktop currently falls back to its generic bridge icon for self-hosted
+`bridgev2` accounts such as `sh-vcvm-matrix`. For local operator setups that
+want a recognizable Matrix-proxy/account icon in Beeper's native sidebar, this
+repo includes a local-only patch helper:
+
+```bash
+node scripts/patch_beeper_desktop_bridgev2_icon.cjs --image /absolute/path/to/icon.png
+npm run beeper:bridgev2-icon:check
+```
+
+It accepts local PNG, JPG, SVG, WebP, GIF, or AVIF images, writes timestamped
+backups next to the patched Beeper renderer files, and can be restored with
+`npm run beeper:bridgev2-icon:restore`. See
+[docs/beeper-desktop-bridgev2-custom-icon.md](docs/beeper-desktop-bridgev2-custom-icon.md).
+
+Offline preview:
+[infra/beeper-desktop-icon-testbench/index.html](infra/beeper-desktop-icon-testbench/index.html)
+
 ## Portable Matrix Avatar Sync
 
 The Beeper-source avatar path is now documented as a portable Matrix-native
@@ -69,8 +89,12 @@ The sync can target a Matrix client profile (`cinny`, `element`, `generic`,
 `beeper-native`/`bipa-native`, or `custom`) so the same portable renderer uses
 badge sizes and group-bubble density that fit the main client UI. Matrix room
 avatars are server room state, so one room cannot simultaneously publish
-different `m.room.avatar` images to Cinny and Element. For Beeper/BIPA-native
-clients, use the native profile to leave real source avatars unmodified.
+different `m.room.avatar` images to Cinny and Element. The `cinny` profile keeps
+messenger badges tight on the lower-right edge, while the `element` profile
+moves them inward with a circle-safe placement for Element's round crop. Group
+fallback avatars use a neutral light-gray gradient behind the participant
+bubbles. For Beeper/BIPA-native clients, use the native profile to leave real
+source avatars unmodified.
 
 ## Matrix Archive Backup Sync
 
@@ -317,8 +341,8 @@ export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE=cinny # cinny, element, 
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_POSITION=bottom-right # bottom-right, bottom-left, top-right, top-left
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_LAYOUT=edge           # edge or circle-safe
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHAPE=rounded        # rounded or circle
-export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT=26
-export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_INSET_PERCENT=1
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT=28
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_INSET_PERCENT=0
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHADOW=false
 export BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS=false
 ```
@@ -337,8 +361,8 @@ avatar_badge:
   position: bottom-right
   layout: edge
   shape: rounded
-  size_percent: 26
-  inset_percent: 1
+  size_percent: 28
+  inset_percent: 0
   shadow: false
 
 group_avatar:

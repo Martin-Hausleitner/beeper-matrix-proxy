@@ -9,6 +9,15 @@ public `main` branch.
 
 ### Added
 
+- Local Beeper Desktop `bridgev2` sidebar icon helper:
+  `scripts/patch_beeper_desktop_bridgev2_icon.cjs` can embed any local image
+  into the native Beeper renderer's generic bridge slot, map self-hosted
+  `bridgev2` accounts to that slot, verify/restore the patch, and preview the
+  crop through `infra/beeper-desktop-icon-testbench/index.html`.
+- Matrix avatar client profiles now distinguish Cinny's near-corner badge
+  placement from Element's circle-safe placement, group fallback avatars use a
+  neutral light-gray gradient behind the participant bubbles, and the portable
+  avatar sync docs describe the SQLite mapping database plus `media_cache`.
 - `matrix-archive-sync`, a standalone Rust CLI that archives standard Matrix
   rooms into SQLite with zstd-compressed raw events, FTS5 search fields, a
   SHA-256 content-addressed media store, static HTML/JSONL exports, and

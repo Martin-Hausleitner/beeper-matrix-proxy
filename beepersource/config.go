@@ -245,8 +245,8 @@ func applyAvatarClientProfile(cfg *Config) {
 		cfg.Matrix.AvatarFallbackBadges = true
 		cfg.Matrix.AvatarBadgeLayout = "edge"
 		cfg.Matrix.AvatarBadgeShape = "rounded"
-		cfg.Matrix.AvatarBadgeSizePercent = 26
-		cfg.Matrix.AvatarBadgeInsetPercent = 1
+		cfg.Matrix.AvatarBadgeSizePercent = 28
+		cfg.Matrix.AvatarBadgeInsetPercent = 0
 		cfg.Matrix.AvatarBadgeShadow = false
 		cfg.Matrix.GroupAvatarStyle = "auto"
 		cfg.Matrix.GroupAvatarMaxParticipants = 10
@@ -256,8 +256,8 @@ func applyAvatarClientProfile(cfg *Config) {
 		cfg.Matrix.AvatarFallbackBadges = true
 		cfg.Matrix.AvatarBadgeLayout = "circle-safe"
 		cfg.Matrix.AvatarBadgeShape = "rounded"
-		cfg.Matrix.AvatarBadgeSizePercent = 24
-		cfg.Matrix.AvatarBadgeInsetPercent = 3
+		cfg.Matrix.AvatarBadgeSizePercent = 26
+		cfg.Matrix.AvatarBadgeInsetPercent = 4
 		cfg.Matrix.AvatarBadgeShadow = false
 		cfg.Matrix.GroupAvatarStyle = "auto"
 		cfg.Matrix.GroupAvatarMaxParticipants = 10

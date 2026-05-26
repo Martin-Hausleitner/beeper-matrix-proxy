@@ -181,6 +181,14 @@
         height: 126px;
       }
 
+      .profile canvas.cinny-avatar {
+        border-radius: 20px;
+      }
+
+      .profile canvas.round-avatar {
+        border-radius: 50%;
+      }
+
       .proof {
         color: #74f0a9;
         font-size: 11px;
@@ -351,21 +359,25 @@
         ctx.restore();
       }
 
-      async function drawSingle(canvas, key) {
+      async function drawSingle(canvas, key, badge = { x: 184, y: 184, size: 58 }) {
         const ctx = canvas.getContext("2d");
         const icon = await loadIcon(key);
         ctx.clearRect(0, 0, 256, 256);
         drawInitial(ctx, labelByKey[key] || key, 0, 0, 256, 0.42);
-        drawBadge(ctx, icon, key, 184, 184, 58);
+        drawBadge(ctx, icon, key, badge.x, badge.y, badge.size);
       }
 
-      async function drawGroup(canvas, key) {
+      async function drawGroup(canvas, key, badge = { x: 185, y: 185, size: 58 }) {
         const ctx = canvas.getContext("2d");
         const icon = await loadIcon(key);
         ctx.clearRect(0, 0, 256, 256);
-        ctx.fillStyle = "#11151d";
-        ctx.beginPath();
-        ctx.arc(128, 128, 128, 0, Math.PI * 2);
+        const bg = ctx.createLinearGradient(28, 20, 230, 238);
+        bg.addColorStop(0, "#f8f9fb");
+        bg.addColorStop(1, "#d9dee8");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, 256, 256);
+        ctx.fillStyle = "rgba(255,255,255,.07)";
+        roundedRect(ctx, 0, 0, 256, 256, 64);
         ctx.fill();
         const total = Math.max(1, participants[0].messageCount);
         const layout = [
@@ -379,7 +391,7 @@
           const size = clamp(item.base * (0.86 + weight * 0.22), 66, 126);
           drawInitial(ctx, item.person.name, item.x, item.y, size, 0.38);
         }
-        drawBadge(ctx, icon, key, 185, 185, 58);
+        drawBadge(ctx, icon, key, badge.x, badge.y, badge.size);
       }
 
       async function drawCropSafeInitials(canvas, key, withBadge = true) {
@@ -387,7 +399,24 @@
         const icon = await loadIcon(key);
         ctx.clearRect(0, 0, 256, 256);
         drawInitial(ctx, labelByKey[key] || key, 0, 0, 256, 0.42);
-        if (withBadge) drawBadge(ctx, icon, key, 176, 176, 58);
+        if (withBadge) {
+          const badge = profileBadgeRect("element");
+          drawBadge(ctx, icon, key, badge.x, badge.y, badge.size);
+        }
+      }
+
+      function profileBadgeRect(profile) {
+        const sizePercent = profile === "cinny" ? 28 : profile === "element" ? 26 : 26;
+        const size = Math.round(256 * sizePercent / 100);
+        if (profile === "element") {
+          const radius = 128;
+          const badgeRadius = size / 2;
+          const limitRadius = size * 0.707;
+          const centerOffset = Math.round((radius - limitRadius) * 0.707);
+          const center = radius + centerOffset;
+          return { x: Math.round(center - badgeRadius), y: Math.round(center - badgeRadius), size };
+        }
+        return { x: 256 - size, y: 256 - size, size };
       }
 
       function createCanvas() {
@@ -437,6 +466,7 @@
         const card = document.createElement("article");
         card.className = "profile";
         const canvas = createCanvas();
+        canvas.className = profile === "cinny" ? "cinny-avatar" : "round-avatar";
         const key = profile === "beeper-native" ? "beeper" : "whatsapp";
         card.innerHTML = `<h2>${profile}</h2>`;
         card.append(canvas);
@@ -446,8 +476,8 @@
           await drawCropSafeInitials(canvas, "beeper", true);
           proof.textContent = "initials only\nbadge optional via config";
         } else if (profile === "element") {
-          await drawSingle(canvas, key);
-          proof.textContent = "circle-safe badge\nElement crop profile";
+          await drawSingle(canvas, key, profileBadgeRect("element"));
+          proof.textContent = "circle-safe badge\nElement round crop";
         } else if (profile === "generic") {
           await drawGroup(canvas, key);
           proof.textContent = "conservative group\nmax 6 visible";
@@ -455,7 +485,7 @@
           await drawGroup(canvas, "telegram");
           proof.textContent = "manual settings\nposition/size/tuning";
         } else {
-          await drawGroup(canvas, key);
+          await drawGroup(canvas, key, profileBadgeRect("cinny"));
           proof.textContent = "Cinny group bubbles\nMessenger badge visible";
         }
         card.append(proof);

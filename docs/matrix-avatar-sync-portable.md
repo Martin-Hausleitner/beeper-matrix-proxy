@@ -111,9 +111,9 @@ avatar_badge:
   client_profile: cinny
   fallback_badges: true
   position: bottom-right
-  layout: circle-safe
+  layout: edge
   shape: rounded
-  size_percent: 22
+  size_percent: 28
   inset_percent: 0
   shadow: false
 
@@ -130,7 +130,9 @@ group_avatar:
 `style: auto` renders grouped initials bubbles when there are two
 or more visible participants. If only one visible participant remains after
 self-exclusion, the renderer uses a full-size single initials avatar instead of
-a tiny group bubble.
+a tiny group bubble. Group fallback avatars use a neutral light-gray gradient
+behind the colored participant bubbles, so the same generated image reads well
+in dark Cinny/Element themes without turning into a single-hue block.
 
 If you want a strict initials-only setup without source profile photos, also set:
 
@@ -150,8 +152,8 @@ client you care about most:
 
 | Profile | Use when | Behavior |
 |---|---|---|
-| `cinny` | Cinny is the main Matrix UI | Circle-safe small badge with a little inset for tight crops, dense 1-10 group bubbles. |
-| `element` | Element Web/Desktop is the main UI | Circle-safe badge with a little inset and slightly more room for Element crops. |
+| `cinny` | Cinny is the main Matrix UI | Near-corner rounded-square badge (`edge`, 28%, 0% inset) for Cinny's softly rounded room-list avatars, dense 1-10 group bubbles. |
+| `element` | Element Web/Desktop is the main UI | Circle-safe badge (`circle-safe`, 26%, 4% inset) that stays visually centered inside Element's round avatar crop. |
 | `generic` | Multiple unknown Matrix clients consume the rooms | Conservative badge sizing, extra inset, and up to six visible group bubbles. |
 | `beeper-native` / `bipa-native` | The target client already has native Beeper/BIPA context | Leaves real source photos unbadged and disables generated fallback badges. `beeper-native` is the canonical stored/output value. |
 | `custom` | You tune every value manually | Does not apply any preset after loading config. |
@@ -180,6 +182,32 @@ replacement.
 Only publish configurator proof JSON or screenshots with demo or redacted
 participant names. The renderer itself is local/offline, but the proof panel can
 contain whatever names, message counts, and self IDs you type into it.
+
+## Mapping Database And Avatar Cache
+
+The sync keeps one deployment-local SQLite database. Treat it as private
+runtime state, not as repository content. The important tables are:
+
+| Table | Purpose |
+|---|---|
+| `portal` | Beeper chat to Matrix room mapping, including room name/topic metadata. |
+| `puppet` | Beeper sender to Matrix puppet metadata for display names and sender avatars. |
+| `message_mapping` / `reaction_mapping` | Matrix/Beeper event links for bidirectional edits, deletes, and reactions. |
+| `media_cache` | Content-hash keyed Matrix `mxc://` reuse for uploaded platform icons, generated avatars, and source photos. |
+| `kv` | Small sync state such as the last avatar/style value written per room. |
+
+Avatar source priority is:
+
+1. Private contact-photo override file.
+2. Real DM participant/source avatar from Beeper, when enabled.
+3. Beeper chat avatar.
+4. Local generated initials or group-bubble fallback.
+5. Optional messenger badge composed into the uploaded image.
+
+Generated avatar asset IDs include the fallback cache version and visual config
+hash. That means changes to badge profile, group-bubble layout, icon hash, font
+hash, or the neutral group background can invalidate stale Matrix room avatars
+without uploading identical PNGs repeatedly.
 
 ## Contact Photo Overrides
 
