@@ -532,6 +532,7 @@ Legend:
 | Burst delivery | Supported | Matrix -> Beeper | Real Synapse E2E | Remote sync timeline limit is raised to avoid losing fast messages. |
 | Room discovery | Supported | Matrix -> Beeper | Live smoke test | Joined remote Matrix rooms are synced as Beeper portal rooms. |
 | All active Beeper chat discovery | Supported | Beeper -> Matrix | Local rooms-only import | The Beeper source mode auto-pages `/v1/chats` and can create Cinny-visible rooms for all non-archived Beeper chats. |
+| Direct messages | Supported | Beeper -> Matrix | Regression test | 1:1 Beeper chats are created with `is_direct` and reconciled into native Matrix `m.direct` account data so Matrix clients can treat them as personal chats instead of generic rooms. |
 | Room name/topic/avatar | Supported | Matrix -> Beeper | Real Synapse E2E | Uses Matrix room state during chat sync. |
 | Platform labels/icons | Supported | Beeper -> Matrix | Unit tests + local rooms-only import | Uses Beeper `network` names for Matrix Spaces and embedded brand-icon PNG avatars for WhatsApp/Signal/Telegram/etc.; local import caches `platform-logo-v5:*` icons. Portal rooms prefer manual overrides and Beeper chat/person avatars unless `BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS=true` is set. |
 | Replies | Supported | Both | Regression test + live Signal test group E2E | Beeper-local event IDs are rewritten to Matrix IDs, and Matrix reply IDs are rewritten to Beeper message IDs. |

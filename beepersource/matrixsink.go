@@ -79,6 +79,9 @@ func (m *MatrixClientSink) EnsurePortal(ctx context.Context, chat Chat, avatar *
 		if err := m.updateRoomAvatar(ctx, roomID, avatar); err != nil {
 			return "", err
 		}
+		if err := m.syncDirectMapping(ctx, chat, roomID); err != nil {
+			return "", err
+		}
 		return roomID, nil
 	}
 
@@ -122,7 +125,11 @@ func (m *MatrixClientSink) EnsurePortal(ctx context.Context, chat Chat, avatar *
 	if err := m.store.SetValue(ctx, portalProfileSyncKey(chat.ID), profileValue); err != nil {
 		return "", err
 	}
-	return resp.RoomID.String(), nil
+	roomID := resp.RoomID.String()
+	if err := m.syncDirectMapping(ctx, chat, roomID); err != nil {
+		return "", err
+	}
+	return roomID, nil
 }
 
 func (m *MatrixClientSink) createRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (*mautrix.RespCreateRoom, error) {
@@ -465,6 +472,145 @@ func parseMatrixRateLimit(statusCode int, headers http.Header, body []byte) *Mat
 		ErrCode:    matrixErr.ErrCode,
 		Message:    matrixErr.Message,
 	}
+}
+
+func (m *MatrixClientSink) syncDirectMapping(ctx context.Context, chat Chat, roomID string) error {
+	if chat.IsGroup || strings.TrimSpace(roomID) == "" || strings.TrimSpace(m.cfg.Matrix.UserID) == "" {
+		return nil
+	}
+	target := m.directTargetUserID(chat)
+	if target == "" {
+		return nil
+	}
+	direct, err := m.getDirectAccountData(ctx)
+	if err != nil {
+		return err
+	}
+	changed := removeDirectRoom(direct, roomID)
+	if !stringSliceContains(direct[target], roomID) {
+		direct[target] = append(direct[target], roomID)
+		sort.Strings(direct[target])
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return m.putDirectAccountData(ctx, direct)
+}
+
+func (m *MatrixClientSink) getDirectAccountData(ctx context.Context) (map[string][]string, error) {
+	reqCtx, cancel := m.requestContext(ctx)
+	defer cancel()
+	endpoint := strings.TrimRight(m.cfg.Matrix.HomeserverURL, "/") +
+		"/_matrix/client/v3/user/" + url.PathEscape(m.cfg.Matrix.UserID) + "/account_data/m.direct"
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+m.accessToken)
+	resp, err := m.client.Client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var direct map[string][]string
+		if err := json.NewDecoder(resp.Body).Decode(&direct); err != nil {
+			return nil, err
+		}
+		if direct == nil {
+			direct = map[string][]string{}
+		}
+		return direct, nil
+	case http.StatusNotFound:
+		return map[string][]string{}, nil
+	default:
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if rateErr := parseMatrixRateLimit(resp.StatusCode, resp.Header, body); rateErr != nil {
+			return nil, rateErr
+		}
+		return nil, fmt.Errorf("get m.direct account data failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+}
+
+func (m *MatrixClientSink) putDirectAccountData(ctx context.Context, direct map[string][]string) error {
+	payload, err := json.Marshal(direct)
+	if err != nil {
+		return err
+	}
+	reqCtx, cancel := m.requestContext(ctx)
+	defer cancel()
+	endpoint := strings.TrimRight(m.cfg.Matrix.HomeserverURL, "/") +
+		"/_matrix/client/v3/user/" + url.PathEscape(m.cfg.Matrix.UserID) + "/account_data/m.direct"
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPut, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+m.accessToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := m.client.Client.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if rateErr := parseMatrixRateLimit(resp.StatusCode, resp.Header, body); rateErr != nil {
+			return rateErr
+		}
+		return fmt.Errorf("put m.direct account data failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func (m *MatrixClientSink) directTargetUserID(chat Chat) string {
+	sourceID := directTargetSourceID(chat)
+	if sourceID == "" {
+		return ""
+	}
+	if strings.HasPrefix(sourceID, "@") && strings.Contains(sourceID, ":") {
+		return sourceID
+	}
+	return "@" + MatrixGhostLocalpart(sourceID) + ":" + m.matrixServerName()
+}
+
+func directTargetSourceID(chat Chat) string {
+	for _, participant := range chat.Participants {
+		if id := strings.TrimSpace(participant.ID); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+func removeDirectRoom(direct map[string][]string, roomID string) bool {
+	changed := false
+	for userID, rooms := range direct {
+		next := rooms[:0]
+		for _, existing := range rooms {
+			if existing == roomID {
+				changed = true
+				continue
+			}
+			next = append(next, existing)
+		}
+		if len(next) == 0 {
+			delete(direct, userID)
+		} else {
+			direct[userID] = next
+		}
+	}
+	return changed
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func retryAfterHeader(raw string) time.Duration {

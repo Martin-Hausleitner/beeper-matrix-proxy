@@ -110,6 +110,9 @@ public `main` branch.
   Matrix room avatar when the chat itself has no `imgURL`; set
   `BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS=false` to keep service-logo
   fallbacks for those rooms.
+- Direct Beeper/BIPA portal rooms are also reconciled into Matrix `m.direct`
+  account data, so Matrix clients such as Cinny can classify 1:1 rooms as
+  personal chats instead of generic private rooms.
 - Beeper/BIPA avatar refreshes now store content hashes and bypass stale Matrix
   media-cache entries when the avatar bytes change behind the same Beeper asset
   URL; the local hourly archive script enables forced avatar freshness by

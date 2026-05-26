@@ -203,6 +203,136 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 	}
 }
 
+func TestMatrixClientSinkMarksDirectPortalInAccountData(t *testing.T) {
+	var createIsDirect bool
+	var directPayload map[string][]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/createRoom"):
+			var body struct {
+				IsDirect bool `json:"is_direct"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode create room body: %v", err)
+			}
+			createIsDirect = body.IsDirect
+			_ = json.NewEncoder(w).Encode(map[string]string{"room_id": "!dm:local"})
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/account_data/m.direct"):
+			http.Error(w, "not found", http.StatusNotFound)
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/account_data/m.direct"):
+			if err := json.NewDecoder(r.Body).Decode(&directPayload); err != nil {
+				t.Fatalf("decode m.direct body: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	roomID, err := sink.EnsurePortal(ctx, Chat{
+		ID:        "!signal-dm:beeper",
+		AccountID: "signal",
+		Network:   "Signal",
+		Name:      "Alice",
+		Participants: []Sender{{
+			ID:          "signal:+43660123456",
+			DisplayName: "Alice",
+		}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roomID != "!dm:local" || !createIsDirect {
+		t.Fatalf("expected direct room creation, roomID=%q isDirect=%v", roomID, createIsDirect)
+	}
+	target := "@" + MatrixGhostLocalpart("signal:+43660123456") + ":local"
+	if got := directPayload[target]; len(got) != 1 || got[0] != "!dm:local" {
+		t.Fatalf("expected m.direct target %s to contain room, got %#v", target, directPayload)
+	}
+}
+
+func TestMatrixClientSinkRefreshesExistingDirectPortalAccountData(t *testing.T) {
+	var directPayload map[string][]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.room.name/"):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$name"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.room.topic/"):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$topic"})
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/account_data/m.direct"):
+			_ = json.NewEncoder(w).Encode(map[string][]string{
+				"@old:local":   {"!existing:local"},
+				"@other:local": {"!other:local"},
+			})
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/account_data/m.direct"):
+			if err := json.NewDecoder(r.Body).Decode(&directPayload); err != nil {
+				t.Fatalf("decode m.direct body: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{
+		ID:        "!signal-dm:beeper",
+		AccountID: "signal",
+		Network:   "Signal",
+		Name:      "Alice",
+		Participants: []Sender{{
+			ID:          "signal:+43660123456",
+			DisplayName: "Alice",
+		}},
+	}
+	if err := store.UpsertPortal(ctx, chat, "!existing:local", "cursor"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetValue(ctx, portalProfileSyncKey(chat.ID), "stale-profile"); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	roomID, err := sink.EnsurePortal(ctx, chat, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roomID != "!existing:local" {
+		t.Fatalf("unexpected room ID %q", roomID)
+	}
+	if _, ok := directPayload["@old:local"]; ok {
+		t.Fatalf("expected stale direct room link to be removed, got %#v", directPayload)
+	}
+	if got := directPayload["@other:local"]; len(got) != 1 || got[0] != "!other:local" {
+		t.Fatalf("expected unrelated m.direct entry to remain, got %#v", directPayload)
+	}
+	target := "@" + MatrixGhostLocalpart("signal:+43660123456") + ":local"
+	if got := directPayload[target]; len(got) != 1 || got[0] != "!existing:local" {
+		t.Fatalf("expected refreshed m.direct target %s to contain room, got %#v", target, directPayload)
+	}
+}
+
 func TestMatrixClientSinkAddsSenderAvatarToPerMessageProfile(t *testing.T) {
 	var uploadedContentType string
 	var profileAvatarURL string
