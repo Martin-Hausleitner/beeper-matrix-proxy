@@ -40,6 +40,46 @@ func TestGeneratedContactAvatarUsesPersonFallbackWithMessengerBadge(t *testing.T
 	}
 }
 
+func TestPortalAvatarWithoutSourcePhotoUsesInitialsFallbackWithMessengerBadge(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	svc := NewService(DefaultConfig(), store, &fakeBeeperAPI{}, &fakeMatrixSink{})
+
+	chat := Chat{
+		ID:        "!no-photo:beeper",
+		AccountID: "signal",
+		Network:   "Signal",
+		Name:      "No Photo Person",
+		Participants: []Sender{
+			{ID: "@no-photo:signal", DisplayName: "No Photo Person"},
+		},
+	}
+	avatar, err := svc.portalAvatar(ctx, chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if avatar == nil {
+		t.Fatal("expected generated initials avatar")
+	}
+	if !strings.HasPrefix(avatar.AssetID, "avatar-fallback-v18:!no-photo:beeper:single:signal:") {
+		t.Fatalf("expected v18 initials fallback asset id, got %q", avatar.AssetID)
+	}
+	body := readMatrixMediaBytes(t, avatar)
+	img, err := png.Decode(bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("decode generated avatar: %v", err)
+	}
+	if whiteInitialPixels(img) < 1500 {
+		t.Fatalf("expected visible white initials, got %d white pixels", whiteInitialPixels(img))
+	}
+	base := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	drawContactFallbackBase(base, chat)
+	if badgeDeltaPixels(base, img) < 1000 {
+		t.Fatal("expected the Signal badge to be composed into the generated initials avatar")
+	}
+}
+
 func TestAddPlatformBadgeToAvatarUsesAppStyleBadgeWithoutHarshWhiteRing(t *testing.T) {
 	original := testPNGAvatar(t, color.RGBA{R: 40, G: 90, B: 170, A: 255})
 	avatar := &MatrixMedia{

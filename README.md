@@ -225,7 +225,7 @@ Current `beeper-source` implementation status:
 | Matrix -> Beeper edits/deletes/reactions | Supported | Live-tested in the Signal test group through Beeper Desktop API update/delete/reaction endpoints. |
 | Local voice transcription replies | Opt-in | Selected Beeper-source voice messages can be transcribed with a local command such as MLX Whisper and summarized through an OpenAI-compatible local LM Studio server. See [docs/voice-ai-transcription.md](docs/voice-ai-transcription.md). |
 | Cinny visibility | Supported | Verified in Cinny v4.11.1: WhatsApp, Signal, and Matrix test rooms appear as Matrix rooms. |
-| Beeper chat avatars -> Matrix room icons | Supported | Beeper `imgURL`/asset avatars are uploaded to Matrix and refreshed on existing portal rooms; by default room avatars keep the real chat/person picture and add a larger app-like messenger badge for Cinny/Element. Rooms without a real photo get a neutral person/default avatar plus the badge. |
+| Beeper chat avatars -> Matrix room icons | Supported | Beeper `imgURL`/asset avatars are uploaded to Matrix and refreshed on existing portal rooms; by default room avatars keep the real chat/person picture and add a larger app-like messenger badge for Cinny/Element. Rooms without a real photo get a generated initials avatar plus the badge. |
 | All active Beeper chats in Matrix/Cinny | Supported | `cmd/beeper-source -rooms-only` creates/updates portal rooms for every non-archived Beeper chat without importing history or sending to contacts. Archived chats can be opted in. |
 | Platform names/icons | Supported | Rooms-only mode groups rooms into Matrix Spaces per Beeper `network` (`WhatsApp`, `Signal`, `Telegram`, etc.); embedded local brand-icon PNGs are cached once per service for service spaces and used as the badge source for room avatars. |
 | Matrix Spaces by messenger | Supported | Rooms-only import creates a Beeper root space and top-level service spaces for WhatsApp, Signal, Telegram, bridgev2, and Beeper(Matrix), then links portal rooms under the matching service. |
@@ -240,7 +240,7 @@ Local E2E evidence policy:
 | All-chat rooms-only import | Local Synapse + Cinny | Beeper discovery/import is paginated, resumable, and idempotent. Local evidence should be kept outside the public repo because it can contain room names, user IDs, and screenshots. |
 | Rooms-only backpressure/retry | Local Synapse | Verified locally with resumable room creation, adaptive retry/backpressure, and an idempotency pass. Keep exact room counts and timings in private run logs. |
 | Matrix Spaces by service | Local Synapse + Cinny | Rooms are linked under messenger-service spaces when spaces are enabled. Verify locally with `/state/m.space.child` and Cinny screenshots kept outside the public repo. |
-| Native avatar badges | Local Synapse + Cinny/Element | Platform avatar cache uses embedded local brand-icon PNG media for service spaces. Portal room fallbacks use a generated person/default avatar plus a service badge, not a pure logo-only room avatar. Verify exact MXC URIs and screenshots in private run logs. |
+| Native avatar badges | Local Synapse + Cinny/Element | Platform avatar cache uses embedded local brand-icon PNG media for service spaces. Portal room fallbacks use generated initials avatars plus a service badge, not a pure logo-only room avatar. Verify exact MXC URIs and screenshots in private run logs. |
 | Matrix/Cinny -> Beeper text, edit, reaction, delete | Dedicated test groups only | Verified with non-contact test rooms. Exact Beeper message IDs and Matrix event IDs must stay out of public docs. |
 | Matrix/Cinny -> Beeper image/file/GIF/audio | Dedicated test groups only | Verified with local test payloads in WhatsApp/Signal-style test rooms. Exact remote identifiers must stay out of public docs. |
 | Beeper -> Matrix reply/media/audio/GIF | Dedicated test groups only | Verified as Matrix events with relation metadata and media msgtypes. Exact event IDs and room names must stay out of public docs. |
@@ -304,12 +304,13 @@ Spaces already provide the service grouping. Set
 `[Telegram] Chat Name`; set `BEEPER_MATRIX_PROXY_MATRIX_ROOM_PREFIX="Beeper: "`
 too if you explicitly want the old prefixed form. Set
 `BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS=true` only when you explicitly want
-every portal room to use a generated person/default avatar with the messenger
-badge instead of the Beeper/BIPA chat profile picture. With the default setting, Beeper `imgURL` avatars are fully
-downloaded through the Desktop API, including relative BIPA asset URLs resolved
-against `BEEPER_MATRIX_PROXY_BEEPER_BASE_URL`; generated person/default avatars
-are used only as a fallback when no chat/person image exists. For direct chats
-where Beeper exposes no chat-level `imgURL`,
+every portal room to use a generated initials avatar with the messenger badge
+instead of the Beeper/BIPA chat profile picture. With the default setting,
+Beeper `imgURL` avatars are fully downloaded through the Desktop API, including
+relative BIPA asset URLs resolved against
+`BEEPER_MATRIX_PROXY_BEEPER_BASE_URL`; generated initials avatars are used only
+as a fallback when no chat/person image exists. For direct chats where Beeper
+exposes no chat-level `imgURL`,
 `BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS=true` uses an available
 participant Beeper avatar as the Matrix room avatar; set it to `false` to keep
 the generated fallback for those rooms.
@@ -571,7 +572,7 @@ Legend:
 | Voice messages | Partial | Both | Payload support | Voice metadata is supported; waveform generation needs more work. |
 | Polls | Partial | Matrix -> Beeper | Regression test + real Synapse poll lifecycle E2E | Poll starts are normalized with MSC1767 text fallbacks; Beeper UI round-trip still needs account-level testing. |
 | Backfill / history | Partial | Matrix -> Beeper | Code path | Backfill APIs exist; safe placeholder cleanup is intentionally separate. |
-| Avatars / room icons | Supported | Matrix -> Beeper, Beeper -> Matrix | Unit tests + real Synapse room-state E2E + live Cinny/Beeper test group | Matrix room avatars bridge to Beeper; Beeper chat/person avatars upload to Matrix portal rooms, refresh when `imgURL` changes, and can receive a native app-like service badge. Rooms without a source photo use a generated person/default avatar plus badge. |
+| Avatars / room icons | Supported | Matrix -> Beeper, Beeper -> Matrix | Unit tests + real Synapse room-state E2E + live Cinny/Beeper test group | Matrix room avatars bridge to Beeper; Beeper chat/person avatars upload to Matrix portal rooms, refresh when `imgURL` changes, and can receive a native app-like service badge. Rooms without a source photo use a generated initials avatar plus badge. |
 | Typing notifications | Supported | Both | Regression test + real Synapse ephemeral E2E | Beeper typing is sent to remote Matrix; remote Matrix typing is queued back to Beeper. |
 | Read receipts | Supported | Both | Real Synapse ephemeral E2E | Exact Beeper receipts are sent to remote Matrix; remote Matrix receipts are queued to Beeper. |
 | Native audio/video calls | Not supported | Both | Intentionally hidden | Custom bridges should emit call notices/links instead of fake native call UI. |

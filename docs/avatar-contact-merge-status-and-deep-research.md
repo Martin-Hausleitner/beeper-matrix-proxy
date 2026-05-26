@@ -9,7 +9,7 @@ The Matrix-native avatar path now has the polished v2 pipeline:
 - Real Beeper/BIPA chat or participant avatars are uploaded as normal Matrix `m.room.avatar` media.
 - A larger app-like messenger badge is composed into the avatar image, so Cinny and Element render it without client patches.
 - The badge uses locally embedded brand PNG assets from `beepersource/assets/brand-icons/manifest.json`; runtime never downloads icons from the internet.
-- Rooms without a real photo now get a neutral person/default avatar plus the messenger badge instead of a pure service-logo circle.
+- Rooms without a real photo now get a generated initials avatar plus the messenger badge instead of a pure service-logo circle.
 - Service spaces still use service icons.
 - A private override file can supply manually approved contact photos before Beeper/BIPA avatars are considered.
 - The hourly LaunchAgent enables this by default with `BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES=true`.
@@ -91,7 +91,7 @@ Priority today:
 1. Private manual override file via `BEEPER_MATRIX_PROXY_CONTACT_AVATAR_OVERRIDES`.
 2. Participant avatar for direct chats when enabled.
 3. Chat-level Beeper/BIPA avatar if Beeper exposes one.
-4. Generated person/default avatar when no real chat/person image exists.
+4. Generated initials avatar when no real chat/person image exists.
 5. Messenger badge is applied last.
 
 The default private override path used by the hourly local sync, when present, is:
@@ -211,7 +211,7 @@ Context:
 - Avatars must be written as native Matrix `m.room.avatar` media so Cinny and Element render them without client patches.
 - Current implementation already composes a messenger badge into real Beeper/BIPA chat or participant avatars.
 - Needed improvement: use real/high-quality native app icons for WhatsApp, Signal, Telegram, Beeper, Matrix, email, iMessage, Messenger, Instagram, Discord, Slack, X, LinkedIn, and future services.
-- Needed improvement: if no real photo exists, use a tasteful person/default avatar, not only the messenger logo.
+- Needed improvement: if no real photo exists, use a tasteful generated initials avatar, not only the messenger logo.
 - Needed improvement: merge profile photos across Beeper/BIPA, Matrix, Apple Contacts, optional Apple Photos candidates, and private manual override files.
 - Safety: do not send messages to real contacts, do not upload private photos to third-party services, and do not rely on cloud face recognition. Prefer local-only, auditable workflows.
 

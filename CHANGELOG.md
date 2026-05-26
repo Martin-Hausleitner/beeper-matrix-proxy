@@ -18,6 +18,9 @@ public `main` branch.
   placement from Element's circle-safe placement, group fallback avatars use a
   neutral light-gray gradient behind the participant bubbles, and the portable
   avatar sync docs describe the SQLite mapping database plus `media_cache`.
+- Portal rooms without a source photo now have an explicit regression test for
+  generated initials avatars with the messenger badge, instead of falling back
+  to a generic person/default picture.
 - `matrix-archive-sync`, a standalone Rust CLI that archives standard Matrix
   rooms into SQLite with zstd-compressed raw events, FTS5 search fields, a
   SHA-256 content-addressed media store, static HTML/JSONL exports, and
@@ -73,7 +76,7 @@ public `main` branch.
   standard Matrix `m.room.avatar` field.
 - Avatar badges now use embedded local brand-icon PNG assets, a larger
   app-style badge treatment, and `avatar-badge-v2` cache keys. Rooms without a
-  real chat/person photo now get a generated person/default avatar plus the
+  real chat/person photo now get a generated initials avatar plus the
   service badge instead of a logo-only room avatar.
 - `BEEPER_MATRIX_PROXY_CONTACT_AVATAR_OVERRIDES` can point at a private local
   YAML file for manually approved contact-photo overrides. These overrides win
