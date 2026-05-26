@@ -72,6 +72,66 @@ func TestMatrixSyncForwardsCinnyMessageToBeeper(t *testing.T) {
 	}
 }
 
+func TestMatrixSyncIgnoresVoiceAIGeneratedReplies(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{ID: "!chat:beeper", AccountID: "signal", Name: "Test"}
+	if err := store.UpsertPortal(ctx, chat, "!room:local", "beeper-cursor"); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeBeeperAPI{}
+	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_matrix/client/v3/sync" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"next_batch": "sync-voice-ai",
+			"rooms": {
+				"join": {
+					"!room:local": {
+						"timeline": {
+							"events": [{
+								"type": "m.room.message",
+								"event_id": "$voice-ai:local",
+								"sender": "@summary:local",
+								"content": {
+									"msgtype": "m.notice",
+									"body": "Sprachnachricht transkribiert",
+									"com.openclaw.voice_ai": {
+										"source_message_id": "$voice1",
+										"source_event_id": "$event-voice1:local",
+										"chat_id": "!chat:beeper",
+										"kind": "transcript_summary"
+									}
+								}
+							}]
+						}
+					}
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@bridge:local"
+	cfg.Matrix.InsecureSkipTLS = true
+	source := NewMatrixClientSource(cfg, store, "matrix-token")
+	handled, err := source.SyncOnce(ctx, svc)
+	if err != nil {
+		t.Fatalf("SyncOnce returned error: %v", err)
+	}
+	if handled != 0 {
+		t.Fatalf("expected voice AI reply to be ignored, got %d handled events", handled)
+	}
+	if len(api.sent) != 0 {
+		t.Fatalf("expected no Beeper send for generated voice AI reply, got %d", len(api.sent))
+	}
+}
+
 func TestMatrixSyncForwardsMediaToBeeper(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)

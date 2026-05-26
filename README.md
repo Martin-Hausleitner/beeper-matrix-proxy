@@ -42,28 +42,28 @@ The screenshots below are generated from public-safe demo data in the local
 configurator. They show the same native Matrix `m.room.avatar` output that
 Cinny and Element receive from the sync.
 
-| Configurator | Single visible member | 1-10 group layouts | Client profile mode |
-|---|---|---|---|
-| ![Avatar configurator overview](docs/assets/avatar-configurator-overview.png) | ![Single visible participant fallback](docs/assets/avatar-single-visible-fallback.png) | ![Group avatar gallery from one to ten participants](docs/assets/avatar-gallery-1-to-10.png) | ![Avatar client profile mode](docs/assets/avatar-client-profiles.png) |
+| Configurator | Cinny near-corner badge | Single visible member | 1-10 group layouts | Client profile mode |
+|---|---|---|---|---|
+| ![Avatar configurator overview](docs/assets/avatar-configurator-overview.png) | ![Cinny avatar configurator proof](docs/assets/avatar-configurator-cinny-v9-proof-2026-05-26.png) | ![Single visible participant fallback](docs/assets/avatar-single-visible-fallback.png) | ![Group avatar gallery from one to ten participants](docs/assets/avatar-gallery-1-to-10.png) | ![Avatar client profile mode](docs/assets/avatar-client-profiles.png) |
 
 ### Platform Proof Gallery
 
 The platform gallery is rendered from the same local/offline icon set and demo
 avatar rules. Each platform card shows three public-safe examples: a single
-initials avatar, a weighted group-bubble avatar, and a pseudo-profile-photo
-avatar with the platform badge. The full gallery currently covers 33 platforms
-and 99 generated avatar examples.
+initials avatar, a weighted group-bubble avatar, and a crop-safe initials
+avatar with the platform badge. The public default now only shows the
+messaging/social matrix-safe set. The private creator/adult icon library is
+disabled by default and requires explicit local opt-in.
 
 Open the local proof page here:
 [infra/avatar-configurator/platform-gallery.html](infra/avatar-configurator/platform-gallery.html)
 
-| Messaging/social platforms | Creator/platform icons |
-|---|---|
-| ![Messaging and social avatar platform gallery](docs/assets/avatar-platform-gallery-messaging.png) | ![Creator and platform avatar gallery](docs/assets/avatar-platform-gallery-creator.png) |
+Private local opt-in:
+`platform-gallery.html?creators=1`
 
-| Client profile comparison | Full public-safe proof sheet |
+| Messaging/social platforms | Client profile comparison |
 |---|---|
-| ![Avatar client profile comparison](docs/assets/avatar-platform-gallery-profiles.png) | ![Full avatar platform proof gallery](docs/assets/avatar-platform-gallery-full.png) |
+| ![Messaging and social avatar platform gallery](docs/assets/avatar-platform-gallery-messaging.png) | ![Avatar client profile comparison](docs/assets/avatar-platform-gallery-profiles.png) |
 
 The sync can target a Matrix client profile (`cinny`, `element`, `generic`,
 `beeper-native`/`bipa-native`, or `custom`) so the same portable renderer uses
@@ -199,6 +199,7 @@ Current `beeper-source` implementation status:
 | Beeper -> Matrix text mirror core | Supported | `cmd/beeper-source` can create Matrix rooms and mirror Beeper text messages into them. |
 | Matrix -> Beeper text/media core | Supported | Matrix `/sync` reader forwards user text and Matrix media from portal rooms to Beeper with stored sync tokens. |
 | Matrix -> Beeper edits/deletes/reactions | Supported | Live-tested in the Signal test group through Beeper Desktop API update/delete/reaction endpoints. |
+| Local voice transcription replies | Opt-in | Selected Beeper-source voice messages can be transcribed with a local command such as MLX Whisper and summarized through an OpenAI-compatible local LM Studio server. See [docs/voice-ai-transcription.md](docs/voice-ai-transcription.md). |
 | Cinny visibility | Supported | Verified in Cinny v4.11.1: WhatsApp, Signal, and Matrix test rooms appear as Matrix rooms. |
 | Beeper chat avatars -> Matrix room icons | Supported | Beeper `imgURL`/asset avatars are uploaded to Matrix and refreshed on existing portal rooms; by default room avatars keep the real chat/person picture and add a larger app-like messenger badge for Cinny/Element. Rooms without a real photo get a neutral person/default avatar plus the badge. |
 | All active Beeper chats in Matrix/Cinny | Supported | `cmd/beeper-source -rooms-only` creates/updates portal rooms for every non-archived Beeper chat without importing history or sending to contacts. Archived chats can be opted in. |
@@ -298,23 +299,28 @@ Use `BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE` to choose the target UI:
 `cinny` is the default, `element` uses a slightly larger crop-safe badge,
 `generic` is more conservative, and `beeper-native`/`bipa-native` disables badge
 generation for native Beeper/BIPA-style clients that already show source
-context.
+context. The Cinny profile intentionally uses a larger near-corner badge so the
+messenger service remains visible in compact room lists and profile headers.
 
 Avatar badge layout is configurable for two public-safe avatar types:
 real contact/photo avatars plus a messenger badge, and generated initials
 avatars plus a messenger badge when no source photo exists. The default
-`circle-safe` layout keeps the whole badge inside a hard circular client crop.
-Use `edge` if your client does not clip avatars to a circle and you want the
-service icon visually tighter in the lower-right corner.
+`edge` is the Cinny preset because Cinny's room list uses rounded-square
+avatars and the service icon should sit visibly in the lower-right corner.
+Use `circle-safe` when a client hard-crops avatars to circles and you need the
+whole badge inside that crop.
+
+For a strict initials-only setup, disable DM participant avatars as well:
 
 ```bash
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE=cinny # cinny, element, generic, beeper-native, custom
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_POSITION=bottom-right # bottom-right, bottom-left, top-right, top-left
-export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_LAYOUT=circle-safe    # circle-safe or edge
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_LAYOUT=edge           # edge or circle-safe
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHAPE=rounded        # rounded or circle
-export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT=22
-export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_INSET_PERCENT=0
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SIZE_PERCENT=26
+export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_INSET_PERCENT=1
 export BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGE_SHADOW=false
+export BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS=false
 ```
 
 The same values can live in a private or deployment-local YAML file without any
@@ -329,10 +335,10 @@ avatar_badge:
   client_profile: cinny
   fallback_badges: true
   position: bottom-right
-  layout: circle-safe
+  layout: edge
   shape: rounded
-  size_percent: 22
-  inset_percent: 0
+  size_percent: 26
+  inset_percent: 1
   shadow: false
 
 group_avatar:

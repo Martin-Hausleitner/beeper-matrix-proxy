@@ -747,6 +747,9 @@ func contentPayload(content *event.MessageEventContent, outbound MatrixOutbound)
 		source["attachment_index"] = outbound.AttachmentIdx
 	}
 	payload["com.openclaw.beeper.source"] = source
+	if outbound.VoiceAI != nil {
+		payload["com.openclaw.voice_ai"] = outbound.VoiceAI
+	}
 	return payload
 }
 

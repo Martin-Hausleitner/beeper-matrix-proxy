@@ -226,7 +226,7 @@
       <section id="messaging">
         <div class="section-head">
           <h2>Messaging & Social</h2>
-          <p class="sub">Single initials, weighted group bubbles, and pseudo-profile photo with messenger badge.</p>
+          <p class="sub">Single initials, weighted group bubbles, and crop-safe initials with messenger badge.</p>
         </div>
         <div class="grid" id="messagingGrid"></div>
       </section>
@@ -234,7 +234,7 @@
       <section id="creator">
         <div class="section-head">
           <h2>Creator & Platform Icons</h2>
-          <p class="sub">The same renderer uses local/offline icon assets from the repository.</p>
+          <p class="sub">Optional private library. Hidden by default and only shown with explicit local opt-in.</p>
         </div>
         <div class="grid" id="creatorGrid"></div>
       </section>
@@ -253,6 +253,7 @@
       const iconBase = "../../beepersource/assets/brand-icons/icons";
       const iconCache = new Map();
       const messagingKeys = ["whatsapp", "signal", "telegram", "matrix", "email", "imessage", "messenger", "instagram", "discord", "slack", "x", "linkedin", "beeper"];
+      const creatorLibraryEnabled = new URLSearchParams(window.location.search).get("creators") === "1";
       const profileNames = ["cinny", "element", "generic", "beeper-native", "custom"];
       const participants = [
         { name: "Anna Novak", messageCount: 240 },
@@ -381,26 +382,12 @@
         drawBadge(ctx, icon, key, 185, 185, 58);
       }
 
-      async function drawPhoto(canvas, key, withBadge = true) {
+      async function drawCropSafeInitials(canvas, key, withBadge = true) {
         const ctx = canvas.getContext("2d");
         const icon = await loadIcon(key);
         ctx.clearRect(0, 0, 256, 256);
-        const grad = ctx.createRadialGradient(86, 56, 16, 128, 128, 178);
-        grad.addColorStop(0, hsl(`${key}-photo`, 24));
-        grad.addColorStop(0.58, hsl(`${key}-photo`, 78));
-        grad.addColorStop(1, "#1f2430");
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(128, 128, 128, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,.86)";
-        ctx.beginPath();
-        ctx.arc(128, 104, 46, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.ellipse(128, 188, 72, 54, 0, 0, Math.PI * 2);
-        ctx.fill();
-        if (withBadge) drawBadge(ctx, icon, key, 184, 184, 58);
+        drawInitial(ctx, labelByKey[key] || key, 0, 0, 256, 0.42);
+        if (withBadge) drawBadge(ctx, icon, key, 176, 176, 58);
       }
 
       function createCanvas() {
@@ -423,13 +410,13 @@
             </div>
           </div>
           <div class="samples"></div>
-          <div class="source">3 Varianten: Single, Gruppe, Profilfoto-Demo</div>
+          <div class="source">3 Varianten: Single, Gruppe, Crop-safe Initialen</div>
         `;
         const samples = card.querySelector(".samples");
         const variants = [
           ["single", drawSingle],
           ["group", drawGroup],
-          ["photo", drawPhoto],
+          ["crop-safe", drawCropSafeInitials],
         ];
         for (const [caption, draw] of variants) {
           const sample = document.createElement("div");
@@ -456,8 +443,8 @@
         const proof = document.createElement("div");
         proof.className = "proof";
         if (profile === "beeper-native") {
-          await drawPhoto(canvas, "beeper", false);
-          proof.textContent = "normal profile picture\nno generated badge";
+          await drawCropSafeInitials(canvas, "beeper", true);
+          proof.textContent = "initials only\nbadge optional via config";
         } else if (profile === "element") {
           await drawSingle(canvas, key);
           proof.textContent = "circle-safe badge\nElement crop profile";
@@ -480,16 +467,24 @@
         labelByKey = Object.fromEntries(manifest.map((entry) => [entry.key, entry.label]));
         kindByKey = Object.fromEntries(manifest.map((entry) => [entry.key, entry.source_kind]));
         const creatorKeys = manifest.map((entry) => entry.key).filter((key) => !messagingKeys.includes(key));
+        const creatorSection = document.querySelector("#creator");
         for (const key of messagingKeys) {
           document.querySelector("#messagingGrid").append(await platformCard(key));
         }
-        for (const key of creatorKeys) {
-          document.querySelector("#creatorGrid").append(await platformCard(key));
+        if (creatorLibraryEnabled) {
+          for (const key of creatorKeys) {
+            document.querySelector("#creatorGrid").append(await platformCard(key));
+          }
+        } else {
+          creatorSection.hidden = true;
         }
         for (const profile of profileNames) {
           document.querySelector("#profileGrid").append(await profileCard(profile));
         }
-        document.querySelector("#status").textContent = `${manifest.length} platforms / ${manifest.length * 3} avatar examples`;
+        const visiblePlatformCount = messagingKeys.length + (creatorLibraryEnabled ? creatorKeys.length : 0);
+        document.querySelector("#status").textContent = creatorLibraryEnabled
+          ? `${visiblePlatformCount} platforms / ${visiblePlatformCount * 3} avatar examples`
+          : `${visiblePlatformCount} public platforms / ${visiblePlatformCount * 3} avatar examples`;
       }
 
       render();

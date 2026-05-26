@@ -237,6 +237,12 @@
         border-radius: 50%;
       }
 
+      body[data-client-profile="cinny"] .row canvas,
+      body[data-client-profile="cinny"] .big canvas,
+      body[data-client-profile="cinny"] .gallery-card canvas {
+        border-radius: 14px;
+      }
+
       .gallery-title {
         font-size: 13px;
         font-weight: 850;
@@ -383,6 +389,11 @@ Felix Faber | 2</textarea>
             Eigenes Konto ausblenden
           </label>
 
+          <label class="checkline">
+            <input id="fallbackBadges" type="checkbox" checked />
+            App-Badge immer anzeigen
+          </label>
+
           <label>
             Eigene IDs/Aliasse
             <input id="selfIds" value="Ich, Me, You, Du" />
@@ -398,7 +409,7 @@ Felix Faber | 2</textarea>
               <option value="custom">Custom</option>
             </select>
           </label>
-          <div class="hint">BIPA/Beeper native nutzt normale Profilbilder; Cinny nutzt Messenger-Badge und Gruppen-Icons. `beeper-native` ist die kanonische Ausgabe fuer BIPA/Beeper-Aliasse.</div>
+          <div class="hint">BIPA/Beeper native nutzt standardmaessig normale Profilbilder; fuer ein Initialen-Only-Setup kannst du Badge und Avatar-Quelle unten manuell ueberschreiben. `beeper-native` ist die kanonische Ausgabe fuer BIPA/Beeper-Aliasse.</div>
 
           <div class="grid">
             <label>
@@ -455,13 +466,13 @@ Felix Faber | 2</textarea>
           </label>
 
           <label>
-            Badge-Größe <span class="value" id="badgeSizeValue">22%</span>
-            <input id="badgeSize" type="range" min="18" max="42" value="22" />
+            Badge-Größe <span class="value" id="badgeSizeValue">26%</span>
+            <input id="badgeSize" type="range" min="18" max="42" value="26" />
           </label>
 
           <label>
-            Badge-Inset <span class="value" id="badgeInsetValue">0%</span>
-            <input id="badgeInset" type="range" min="0" max="16" value="0" />
+            Badge-Inset <span class="value" id="badgeInsetValue">1%</span>
+            <input id="badgeInset" type="range" min="0" max="16" value="1" />
           </label>
 
               <label>
@@ -555,16 +566,17 @@ Felix Faber | 2</textarea>
         overlap: document.querySelector("#overlap"),
         badgeSize: document.querySelector("#badgeSize"),
         badgeInset: document.querySelector("#badgeInset"),
+        fallbackBadges: document.querySelector("#fallbackBadges"),
         excludeSelf: document.querySelector("#excludeSelf"),
         selfIds: document.querySelector("#selfIds"),
       };
 
       function applyClientProfile(profile) {
         const profiles = {
-          cinny: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 10, overlap: 34, badgeSize: 22, badgeInset: 0 },
-          element: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 10, overlap: 32, badgeSize: 24, badgeInset: 0 },
-          generic: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 6, overlap: 30, badgeSize: 26, badgeInset: 0 },
-          "beeper-native": { badgeLayout: "circle-safe", groupStyle: "initials", maxParticipants: 2, overlap: 0, badgeSize: 22, badgeInset: 0 },
+          cinny: { badgeLayout: "edge", groupStyle: "auto", maxParticipants: 10, overlap: 34, badgeSize: 26, badgeInset: 1, fallbackBadges: true },
+          element: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 10, overlap: 32, badgeSize: 24, badgeInset: 3, fallbackBadges: true },
+          generic: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 6, overlap: 30, badgeSize: 26, badgeInset: 4, fallbackBadges: true },
+          "beeper-native": { badgeLayout: "circle-safe", groupStyle: "initials", maxParticipants: 2, overlap: 0, badgeSize: 22, badgeInset: 3, fallbackBadges: false },
         };
         const next = profiles[profile];
         if (!next) return;
@@ -574,6 +586,7 @@ Felix Faber | 2</textarea>
         controls.overlap.value = next.overlap;
         controls.badgeSize.value = next.badgeSize;
         controls.badgeInset.value = next.badgeInset;
+        controls.fallbackBadges.checked = next.fallbackBadges;
       }
 
       function crc32(input) {
@@ -1181,7 +1194,7 @@ box ${metrics.used_box_px[0]}x${metrics.used_box_px[1]}`;
           overlap: Number(controls.overlap.value),
           badgeSize: Number(controls.badgeSize.value),
           badgeInset: Number(controls.badgeInset.value),
-          fallbackBadges: clientProfile !== "beeper-native",
+          fallbackBadges: controls.fallbackBadges.checked,
           excludeSelf: controls.excludeSelf.checked,
           selfIds: selfIdList(),
         };
@@ -1189,13 +1202,14 @@ box ${metrics.used_box_px[0]}x${metrics.used_box_px[1]}`;
 
       async function render() {
         const config = currentConfig();
+        document.body.dataset.clientProfile = config.clientProfile;
         document.querySelector("#maxParticipantsValue").textContent = config.maxParticipants;
         document.querySelector("#overlapValue").textContent = `${config.overlap}%`;
         document.querySelector("#badgeSizeValue").textContent = `${config.badgeSize}%`;
         document.querySelector("#badgeInsetValue").textContent = `${config.badgeInset}%`;
         const names = participantList();
         document.querySelector("#rowMessage").textContent = `${names[0]?.name || "Anna"}: ${platformLabels[config.platform]} proof synced`;
-        const badgeLabel = config.fallbackBadges ? `${platformLabels[config.platform]}-Badge ${config.badgePosition}` : "native ohne Badge";
+        const badgeLabel = config.fallbackBadges ? `${platformLabels[config.platform]}-Badge ${config.badgePosition}` : "ohne Badge";
         document.querySelector("#proofText").textContent = `${names.length} Farben, ${config.clientProfile}-Profil, ${badgeLabel}`;
         renderIconSource(config.platform);
         document.querySelector("#configOutput").textContent = `avatar_badge:
@@ -1212,7 +1226,11 @@ group_avatar:
   max_participants: ${config.maxParticipants}
   overlap_percent: ${config.overlap} # used as bubble gap/padding in the local renderer
   exclude_self: ${config.excludeSelf}
-  self_ids: [${config.selfIds.map((id) => `"${id}"`).join(", ")}]`;
+  self_ids: [${config.selfIds.map((id) => `"${id}"`).join(", ")}]
+
+# Initials-only statt echte Profilfotos:
+matrix:
+  dm_participant_avatars: false`;
         document.querySelector("#proofOutput").textContent = JSON.stringify({
           private_data: false,
           platform: config.platform,

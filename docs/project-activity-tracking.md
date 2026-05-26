@@ -34,8 +34,8 @@ Create a private config from local git repositories:
 ```bash
 scripts/project_activity.py init-config \
   --config "$HOME/Library/Application Support/openclaw/project-activity/projects.json" \
-  --repo-root /Users/mh/Documents/Playground \
-  --repo-root /Users/mh/Documents/GitHub
+  --repo-root "$HOME/Documents/Playground" \
+  --repo-root "$HOME/Documents/GitHub"
 ```
 
 Generate a daily report:
@@ -70,7 +70,7 @@ Example private rule:
   "category": "software",
   "confidence": "manual",
   "match": [
-    {"path_contains": ["/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src"]},
+    {"path_contains": ["$HOME/Documents/Playground/sh-vcvm-matrix-bridgev2-src"]},
     {"title_regex": "(?i)beeper-matrix-proxy|sh-vcvm-matrix-bridgev2-src"},
     {"url_contains": ["github.com/Martin-Hausleitner/beeper-matrix-proxy"]}
   ]
@@ -88,7 +88,7 @@ Example private rule:
 
 ## Future Improvements
 
-- Use [infra/project-activity/ai.openclaw.project-activity.plist.example](/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/infra/project-activity/ai.openclaw.project-activity.plist.example)
+- Use [infra/project-activity/ai.openclaw.project-activity.plist.example](../infra/project-activity/ai.openclaw.project-activity.plist.example)
   as the LaunchAgent template for hourly aggregate reports.
 - Add optional ActivityWatch bucket writing, e.g. `aw-openclaw-projects`, for
   project labels as first-class AW events.

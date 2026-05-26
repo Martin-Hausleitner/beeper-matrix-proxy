@@ -113,6 +113,18 @@ type MatrixOutbound struct {
 	AttachmentID  string
 	AttachmentIdx int
 	Media         *MatrixMedia
+	VoiceAI       *VoiceAIMetadata
+}
+
+type VoiceAIMetadata struct {
+	SourceMessageID string `json:"source_message_id"`
+	SourceEventID   string `json:"source_event_id"`
+	ChatID          string `json:"chat_id"`
+	AccountID       string `json:"account_id,omitempty"`
+	Network         string `json:"network,omitempty"`
+	Language        string `json:"language,omitempty"`
+	Model           string `json:"model,omitempty"`
+	Kind            string `json:"kind"`
 }
 
 type AssetStream struct {
@@ -141,7 +153,10 @@ type MatrixMedia struct {
 
 type MatrixInbound struct {
 	ChatID        string
+	RoomID        string
 	MatrixEventID string
+	SenderID      string
+	SenderName    string
 	Body          string
 	HTML          string
 	ReplyToEvent  string

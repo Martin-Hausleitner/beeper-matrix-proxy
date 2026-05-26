@@ -59,14 +59,19 @@ type MatrixSpaceOrganizer interface {
 }
 
 type Service struct {
-	cfg    Config
-	store  *Store
-	api    BeeperAPI
-	matrix MatrixSink
+	cfg     Config
+	store   *Store
+	api     BeeperAPI
+	matrix  MatrixSink
+	voiceAI VoiceAIProcessor
 }
 
 func NewService(cfg Config, store *Store, api BeeperAPI, matrix MatrixSink) *Service {
-	return &Service{cfg: cfg, store: store, api: api, matrix: matrix}
+	var voiceAI VoiceAIProcessor
+	if cfg.VoiceAI.Enabled {
+		voiceAI = NewLocalVoiceAIProcessor(cfg.VoiceAI)
+	}
+	return &Service{cfg: cfg, store: store, api: api, matrix: matrix, voiceAI: voiceAI}
 }
 
 func (s *Service) ReconcileOnce(ctx context.Context) error {
@@ -824,7 +829,12 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, m
 	version := MessageVersion(msg)
 	if ok {
 		if existing.Version == version {
-			return s.mirrorAdditionalAttachments(ctx, roomID, msg, sender, existing.MatrixEventID, version)
+			if len(msg.Attachments) > 0 {
+				if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, msg.Attachments[0], msg.ID, existing.MatrixEventID, version); err != nil {
+					return err
+				}
+			}
+			return s.mirrorAdditionalAttachments(ctx, roomID, chat, msg, sender, existing.MatrixEventID, version)
 		}
 		if msg.IsDeleted {
 			txnID := DeterministicTxnID(msg.ChatID, msg.ID, MutationDelete, version)
@@ -881,7 +891,12 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, m
 		if err := s.store.UpsertMessageMapping(ctx, existing); err != nil {
 			return err
 		}
-		return s.mirrorAdditionalAttachments(ctx, roomID, msg, sender, existing.MatrixEventID, version)
+		if len(msg.Attachments) > 0 {
+			if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, msg.Attachments[0], msg.ID, existing.MatrixEventID, version); err != nil {
+				return err
+			}
+		}
+		return s.mirrorAdditionalAttachments(ctx, roomID, chat, msg, sender, existing.MatrixEventID, version)
 	}
 	body := messageBody(msg)
 	if matrixEventID, ok, err := s.store.ConsumeOutboundEcho(ctx, msg.ChatID, body); err != nil {
@@ -938,7 +953,12 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, m
 	}); err != nil {
 		return err
 	}
-	return s.mirrorAdditionalAttachments(ctx, roomID, msg, sender, eventID, version)
+	if len(msg.Attachments) > 0 {
+		if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, msg.Attachments[0], msg.ID, eventID, version); err != nil {
+			return err
+		}
+	}
+	return s.mirrorAdditionalAttachments(ctx, roomID, chat, msg, sender, eventID, version)
 }
 
 func (s *Service) matrixOutboundForMessage(roomID string, msg Message, sender Sender, version string) MatrixOutbound {
@@ -962,7 +982,7 @@ func (s *Service) matrixOutboundForMessage(roomID string, msg Message, sender Se
 	}
 }
 
-func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string, msg Message, sender Sender, primaryEventID string, version string) error {
+func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string, chat Chat, msg Message, sender Sender, primaryEventID string, version string) error {
 	if len(msg.Attachments) <= 1 {
 		return nil
 	}
@@ -972,14 +992,17 @@ func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string
 	}
 	for index := 1; index < len(msg.Attachments); index++ {
 		mappingID := attachmentMessageID(msg, index)
+		att := msg.Attachments[index]
 		existing, exists, err := s.store.MessageByBeeperID(ctx, mappingID)
 		if err != nil {
 			return err
 		}
 		if exists && existing.Version == version {
+			if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, att, mappingID, existing.MatrixEventID, version); err != nil {
+				return err
+			}
 			continue
 		}
-		att := msg.Attachments[index]
 		outbound := MatrixOutbound{
 			RoomID:        roomID,
 			MessageID:     mappingID,
@@ -1052,6 +1075,9 @@ func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string
 			ChatID:          msg.ChatID,
 			Version:         version,
 		}); err != nil {
+			return err
+		}
+		if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, att, mappingID, eventID, version); err != nil {
 			return err
 		}
 	}
@@ -1139,6 +1165,16 @@ func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound
 	if s.matrixToBeeperDisabled() {
 		return ErrMatrixToBeeperDisabled
 	}
+	pendingVoiceAI, err := s.prepareMatrixInboundVoiceAI(ctx, &inbound)
+	if err != nil {
+		return err
+	}
+	if pendingVoiceAI != nil && pendingVoiceAI.cleanup != nil {
+		defer pendingVoiceAI.cleanup()
+	}
+	if inbound.Attachment != nil && inbound.Attachment.Content != nil {
+		defer inbound.Attachment.Content.Close()
+	}
 	version := inbound.MatrixEventID
 	if version == "" {
 		version = inbound.Body
@@ -1175,7 +1211,10 @@ func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound
 			return err
 		}
 	}
-	return s.store.RememberOutboundEcho(ctx, inbound.ChatID, inbound.Body, inbound.MatrixEventID, 10*time.Minute)
+	if err := s.store.RememberOutboundEcho(ctx, inbound.ChatID, inbound.Body, inbound.MatrixEventID, 10*time.Minute); err != nil {
+		return err
+	}
+	return s.completeMatrixInboundVoiceAI(ctx, pendingVoiceAI, beeperMessageID, inbound.MatrixEventID)
 }
 
 func (s *Service) HandleMatrixEdit(ctx context.Context, chatID, matrixTargetEventID, text string) error {

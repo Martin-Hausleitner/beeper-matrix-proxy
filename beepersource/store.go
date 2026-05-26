@@ -334,6 +334,20 @@ func (s *Store) PortalRoomID(ctx context.Context, chatID string) (string, bool, 
 	return roomID, true, nil
 }
 
+func (s *Store) PortalChat(ctx context.Context, chatID string) (Chat, bool, error) {
+	var chat Chat
+	var roomID string
+	err := s.db.QueryRowContext(ctx, "SELECT beeper_chat_id, matrix_room_id, account_id FROM portal WHERE beeper_chat_id=?", chatID).Scan(&chat.ID, &roomID, &chat.AccountID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Chat{}, false, nil
+	}
+	if err != nil {
+		return Chat{}, false, err
+	}
+	chat.Network = PlatformDisplayName(chat)
+	return chat, true, nil
+}
+
 func (s *Store) PortalChatIDByRoomID(ctx context.Context, matrixRoomID string) (string, bool, error) {
 	var chatID string
 	err := s.db.QueryRowContext(ctx, "SELECT beeper_chat_id FROM portal WHERE matrix_room_id=?", matrixRoomID).Scan(&chatID)

@@ -35,7 +35,7 @@ func PlatformDisplayName(chat Chat) string {
 		return "X"
 	case "linkedin":
 		return "LinkedIn"
-	case "matrix":
+	case "matrix", "sh-vcvm-matrix", "beeper-matrix-proxy", "bridgev2":
 		return "Matrix"
 	case "creatorhero":
 		return "CreatorHero"

@@ -35,7 +35,7 @@ func TestDefaultConfigIsLocalBidirectionalAndSafe(t *testing.T) {
 	if cfg.Matrix.RoomNameIncludePlatform {
 		t.Fatal("expected room names to omit platform labels by default")
 	}
-	if cfg.Matrix.AvatarClientProfile != "cinny" || cfg.Matrix.AvatarBadgeSizePercent != 22 || cfg.Matrix.GroupAvatarMaxParticipants != 10 {
+	if cfg.Matrix.AvatarClientProfile != "cinny" || cfg.Matrix.AvatarBadgeLayout != "edge" || cfg.Matrix.AvatarBadgeSizePercent != 26 || cfg.Matrix.AvatarBadgeInsetPercent != 1 || cfg.Matrix.GroupAvatarMaxParticipants != 10 {
 		t.Fatalf("expected Cinny avatar profile defaults, got %#v", cfg.Matrix)
 	}
 }
@@ -47,6 +47,43 @@ func TestConfigCanDisableMatrixToBeeperWithoutRedeploy(t *testing.T) {
 
 	if !cfg.Safety.DisableMatrixToBeeper {
 		t.Fatal("expected env kill switch to disable matrix->beeper")
+	}
+}
+
+func TestConfigVoiceAIDefaultsToDisabledAndFailClosed(t *testing.T) {
+	cfg := DefaultConfig()
+
+	if cfg.VoiceAI.Enabled {
+		t.Fatal("expected voice AI to be disabled by default")
+	}
+	if len(cfg.VoiceAI.AllowChatIDs)+len(cfg.VoiceAI.AllowChatNames)+len(cfg.VoiceAI.AllowSenderIDs)+len(cfg.VoiceAI.AllowSenderNames) != 0 {
+		t.Fatalf("expected voice AI identity allowlists to default empty, got %#v", cfg.VoiceAI)
+	}
+	if cfg.VoiceAI.SummaryBaseURL != "http://127.0.0.1:1234/v1" || cfg.VoiceAI.Language != "auto" {
+		t.Fatalf("unexpected voice AI local defaults: %#v", cfg.VoiceAI)
+	}
+}
+
+func TestConfigVoiceAICanBeEnabledForSpecificSignalAndWhatsAppChats(t *testing.T) {
+	t.Setenv("BEEPER_MATRIX_PROXY_VOICE_AI_ENABLED", "true")
+	t.Setenv("BEEPER_MATRIX_PROXY_VOICE_AI_ALLOW_NETWORKS", "Signal,WhatsApp")
+	t.Setenv("BEEPER_MATRIX_PROXY_VOICE_AI_ALLOW_CHAT_NAMES", "Felix Ratzenberg,Signal Test,WhatsApp Test")
+	t.Setenv("BEEPER_MATRIX_PROXY_VOICE_AI_TRANSCRIBE_COMMAND", "uvx --from mlx-whisper mlx_whisper \"$AUDIO_PATH\" --model mlx-community/whisper-large-v3-turbo")
+	t.Setenv("BEEPER_MATRIX_PROXY_VOICE_AI_SUMMARY_MODEL", "qwen3-local")
+
+	cfg := DefaultConfig()
+
+	if !cfg.VoiceAI.Enabled {
+		t.Fatal("expected voice AI to be enabled from env")
+	}
+	if len(cfg.VoiceAI.AllowNetworks) != 2 || cfg.VoiceAI.AllowNetworks[0] != "Signal" {
+		t.Fatalf("unexpected voice AI networks: %#v", cfg.VoiceAI.AllowNetworks)
+	}
+	if len(cfg.VoiceAI.AllowChatNames) != 3 || cfg.VoiceAI.AllowChatNames[0] != "Felix Ratzenberg" {
+		t.Fatalf("unexpected voice AI chat names: %#v", cfg.VoiceAI.AllowChatNames)
+	}
+	if cfg.VoiceAI.TranscribeCommand == "" || cfg.VoiceAI.SummaryModel != "qwen3-local" {
+		t.Fatalf("unexpected voice AI command/model config: %#v", cfg.VoiceAI)
 	}
 }
 
@@ -95,7 +132,7 @@ func TestConfigCanUseBeeperNativeAvatarProfile(t *testing.T) {
 	if cfg.Matrix.AvatarBadges || cfg.Matrix.AvatarFallbackBadges || cfg.Matrix.PlatformAvatars {
 		t.Fatalf("expected native profile to avoid avatar rewriting, got %#v", cfg.Matrix)
 	}
-	if !cfg.Matrix.DMParticipantAvatars || cfg.Matrix.GroupAvatarStyle != "initials" || cfg.Matrix.GroupAvatarMaxParticipants != 2 || cfg.Matrix.GroupAvatarOverlapPercent != 0 {
+	if !cfg.Matrix.DMParticipantAvatars || cfg.Matrix.GroupAvatarStyle != "initials" || cfg.Matrix.GroupAvatarMaxParticipants != 2 || cfg.Matrix.GroupAvatarOverlapPercent != 0 || cfg.Matrix.AvatarBadgeInsetPercent != 3 {
 		t.Fatalf("expected native profile to keep source photos and simple fallbacks, got %#v", cfg.Matrix)
 	}
 }
@@ -138,7 +175,7 @@ avatar_badge:
 
 	cfg := DefaultConfig()
 
-	if cfg.Matrix.AvatarClientProfile != "element" || cfg.Matrix.AvatarBadgeSizePercent != 24 {
+	if cfg.Matrix.AvatarClientProfile != "element" || cfg.Matrix.AvatarBadgeSizePercent != 24 || cfg.Matrix.AvatarBadgeInsetPercent != 3 {
 		t.Fatalf("expected empty profile env to leave file profile intact, got %#v", cfg.Matrix)
 	}
 }

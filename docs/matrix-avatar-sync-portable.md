@@ -127,10 +127,17 @@ group_avatar:
     - "Me"
 ```
 
-`style: auto` renders Beeper-like grouped initials bubbles when there are two
+`style: auto` renders grouped initials bubbles when there are two
 or more visible participants. If only one visible participant remains after
 self-exclusion, the renderer uses a full-size single initials avatar instead of
 a tiny group bubble.
+
+If you want a strict initials-only setup without source profile photos, also set:
+
+```yaml
+matrix:
+  dm_participant_avatars: false
+```
 
 ## Matrix Client Profiles
 
@@ -143,9 +150,9 @@ client you care about most:
 
 | Profile | Use when | Behavior |
 |---|---|---|
-| `cinny` | Cinny is the main Matrix UI | Circle-safe small badge, dense 1-10 group bubbles. |
-| `element` | Element Web/Desktop is the main UI | Circle-safe badge with slightly more room for Element crops. |
-| `generic` | Multiple unknown Matrix clients consume the rooms | Conservative badge sizing and up to six visible group bubbles. |
+| `cinny` | Cinny is the main Matrix UI | Circle-safe small badge with a little inset for tight crops, dense 1-10 group bubbles. |
+| `element` | Element Web/Desktop is the main UI | Circle-safe badge with a little inset and slightly more room for Element crops. |
+| `generic` | Multiple unknown Matrix clients consume the rooms | Conservative badge sizing, extra inset, and up to six visible group bubbles. |
 | `beeper-native` / `bipa-native` | The target client already has native Beeper/BIPA context | Leaves real source photos unbadged and disables generated fallback badges. `beeper-native` is the canonical stored/output value. |
 | `custom` | You tune every value manually | Does not apply any preset after loading config. |
 

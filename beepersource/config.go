@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	Beeper BeeperConfig
-	Matrix MatrixConfig
-	Sync   SyncConfig
-	Media  MediaConfig
-	Safety SafetyConfig
+	Beeper  BeeperConfig
+	Matrix  MatrixConfig
+	Sync    SyncConfig
+	Media   MediaConfig
+	Safety  SafetyConfig
+	VoiceAI VoiceAIConfig
 }
 
 type BeeperConfig struct {
@@ -94,6 +95,26 @@ type SafetyConfig struct {
 	DisableMatrixToBeeper bool
 }
 
+type VoiceAIConfig struct {
+	Enabled               bool
+	AllowChatIDs          []string
+	AllowChatNames        []string
+	AllowSenderIDs        []string
+	AllowSenderNames      []string
+	AllowAccountIDs       []string
+	AllowNetworks         []string
+	TranscribeCommand     string
+	StartCommand          string
+	StopCommand           string
+	SummaryBaseURL        string
+	SummaryAPIKeyEnv      string
+	SummaryModel          string
+	SummaryTimeoutSeconds int
+	CommandTimeoutSeconds int
+	Language              string
+	MaxAudioBytes         int64
+}
+
 func DefaultConfig() Config {
 	cfg := Config{
 		Beeper: BeeperConfig{
@@ -148,6 +169,25 @@ func DefaultConfig() Config {
 		Safety: SafetyConfig{
 			DisableMatrixToBeeper: envBool("BEEPER_MATRIX_PROXY_DISABLE_MATRIX_TO_BEEPER", false),
 		},
+		VoiceAI: VoiceAIConfig{
+			Enabled:               envBool("BEEPER_MATRIX_PROXY_VOICE_AI_ENABLED", false),
+			AllowChatIDs:          envCSV("BEEPER_MATRIX_PROXY_VOICE_AI_ALLOW_CHAT_IDS"),
+			AllowChatNames:        envCSV("BEEPER_MATRIX_PROXY_VOICE_AI_ALLOW_CHAT_NAMES"),
+			AllowSenderIDs:        envCSV("BEEPER_MATRIX_PROXY_VOICE_AI_ALLOW_SENDER_IDS"),
+			AllowSenderNames:      envCSV("BEEPER_MATRIX_PROXY_VOICE_AI_ALLOW_SENDER_NAMES"),
+			AllowAccountIDs:       envCSV("BEEPER_MATRIX_PROXY_VOICE_AI_ALLOW_ACCOUNT_IDS"),
+			AllowNetworks:         envCSV("BEEPER_MATRIX_PROXY_VOICE_AI_ALLOW_NETWORKS"),
+			TranscribeCommand:     envString("BEEPER_MATRIX_PROXY_VOICE_AI_TRANSCRIBE_COMMAND", ""),
+			StartCommand:          envString("BEEPER_MATRIX_PROXY_VOICE_AI_START_COMMAND", ""),
+			StopCommand:           envString("BEEPER_MATRIX_PROXY_VOICE_AI_STOP_COMMAND", ""),
+			SummaryBaseURL:        envString("BEEPER_MATRIX_PROXY_VOICE_AI_SUMMARY_BASE_URL", "http://127.0.0.1:1234/v1"),
+			SummaryAPIKeyEnv:      envString("BEEPER_MATRIX_PROXY_VOICE_AI_SUMMARY_API_KEY_ENV", "LM_STUDIO_API_KEY"),
+			SummaryModel:          envString("BEEPER_MATRIX_PROXY_VOICE_AI_SUMMARY_MODEL", ""),
+			SummaryTimeoutSeconds: envInt("BEEPER_MATRIX_PROXY_VOICE_AI_SUMMARY_TIMEOUT_SECONDS", 120),
+			CommandTimeoutSeconds: envInt("BEEPER_MATRIX_PROXY_VOICE_AI_COMMAND_TIMEOUT_SECONDS", 300),
+			Language:              envString("BEEPER_MATRIX_PROXY_VOICE_AI_LANGUAGE", "auto"),
+			MaxAudioBytes:         envInt64("BEEPER_MATRIX_PROXY_VOICE_AI_MAX_AUDIO_BYTES", 25*1024*1024),
+		},
 	}
 	if cfg.Sync.Mode == "" {
 		cfg.Sync.Mode = SyncModeBidirectional
@@ -160,6 +200,15 @@ func DefaultConfig() Config {
 	}
 	if cfg.Sync.PortalTimeoutSeconds <= 0 {
 		cfg.Sync.PortalTimeoutSeconds = 75
+	}
+	if cfg.VoiceAI.SummaryTimeoutSeconds <= 0 {
+		cfg.VoiceAI.SummaryTimeoutSeconds = 120
+	}
+	if cfg.VoiceAI.CommandTimeoutSeconds <= 0 {
+		cfg.VoiceAI.CommandTimeoutSeconds = 300
+	}
+	if cfg.VoiceAI.MaxAudioBytes < 0 {
+		cfg.VoiceAI.MaxAudioBytes = 0
 	}
 	applyAvatarClientProfile(&cfg)
 	applyAvatarBadgeConfigFile(&cfg)
@@ -194,10 +243,10 @@ func applyAvatarClientProfile(cfg *Config) {
 	case "cinny":
 		cfg.Matrix.AvatarBadges = true
 		cfg.Matrix.AvatarFallbackBadges = true
-		cfg.Matrix.AvatarBadgeLayout = "circle-safe"
+		cfg.Matrix.AvatarBadgeLayout = "edge"
 		cfg.Matrix.AvatarBadgeShape = "rounded"
-		cfg.Matrix.AvatarBadgeSizePercent = 22
-		cfg.Matrix.AvatarBadgeInsetPercent = 0
+		cfg.Matrix.AvatarBadgeSizePercent = 26
+		cfg.Matrix.AvatarBadgeInsetPercent = 1
 		cfg.Matrix.AvatarBadgeShadow = false
 		cfg.Matrix.GroupAvatarStyle = "auto"
 		cfg.Matrix.GroupAvatarMaxParticipants = 10
@@ -208,7 +257,7 @@ func applyAvatarClientProfile(cfg *Config) {
 		cfg.Matrix.AvatarBadgeLayout = "circle-safe"
 		cfg.Matrix.AvatarBadgeShape = "rounded"
 		cfg.Matrix.AvatarBadgeSizePercent = 24
-		cfg.Matrix.AvatarBadgeInsetPercent = 0
+		cfg.Matrix.AvatarBadgeInsetPercent = 3
 		cfg.Matrix.AvatarBadgeShadow = false
 		cfg.Matrix.GroupAvatarStyle = "auto"
 		cfg.Matrix.GroupAvatarMaxParticipants = 10
@@ -219,7 +268,7 @@ func applyAvatarClientProfile(cfg *Config) {
 		cfg.Matrix.AvatarBadgeLayout = "circle-safe"
 		cfg.Matrix.AvatarBadgeShape = "rounded"
 		cfg.Matrix.AvatarBadgeSizePercent = 26
-		cfg.Matrix.AvatarBadgeInsetPercent = 0
+		cfg.Matrix.AvatarBadgeInsetPercent = 4
 		cfg.Matrix.AvatarBadgeShadow = true
 		cfg.Matrix.GroupAvatarStyle = "auto"
 		cfg.Matrix.GroupAvatarMaxParticipants = 6
@@ -232,7 +281,7 @@ func applyAvatarClientProfile(cfg *Config) {
 		cfg.Matrix.AvatarBadgeLayout = "circle-safe"
 		cfg.Matrix.AvatarBadgeShape = "rounded"
 		cfg.Matrix.AvatarBadgeSizePercent = 22
-		cfg.Matrix.AvatarBadgeInsetPercent = 0
+		cfg.Matrix.AvatarBadgeInsetPercent = 3
 		cfg.Matrix.AvatarBadgeShadow = false
 		cfg.Matrix.GroupAvatarStyle = "initials"
 		cfg.Matrix.GroupAvatarMaxParticipants = 2

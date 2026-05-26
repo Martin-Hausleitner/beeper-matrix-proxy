@@ -98,7 +98,7 @@ func brandIconKey(raw string) string {
 		return "signal"
 	case "beeper", "bridgev2", "beeper(matrix)":
 		return "beeper"
-	case "matrix":
+	case "matrix", "matrixproxy", "beepermatrixproxy", "shvcvmmatrix", "vcvmmatrix":
 		return "matrix"
 	case "email", "mail", "gmail":
 		return "email"

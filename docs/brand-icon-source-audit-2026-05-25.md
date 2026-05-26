@@ -18,6 +18,7 @@ Priority order:
 - Creator/adult platform icons were refreshed from official homepages, `apple-touch-icon`, PWA manifests, or explicit brand pages where available.
 - The PNG assets are normalized to 256x256 and transparent rounded app-icon corners.
 - `infra/avatar-configurator/icon-manifest.js` was regenerated from the real manifest so the local file-based configurator uses the same icon metadata.
+- The public proof gallery keeps the creator/adult icon library disabled by default; it is available only as a local explicit opt-in and is not part of the default public README surface.
 
 ## Important Licensing Notes
 

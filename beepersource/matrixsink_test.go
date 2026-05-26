@@ -25,6 +25,7 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 	var sentURL string
 	var sentFileName string
 	var sentReplyTo string
+	var sentVoiceAIKind string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/createRoom"):
@@ -65,6 +66,9 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 						EventID string `json:"event_id"`
 					} `json:"m.in_reply_to"`
 				} `json:"m.relates_to"`
+				VoiceAI struct {
+					Kind string `json:"kind"`
+				} `json:"com.openclaw.voice_ai"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode send body: %v", err)
@@ -73,6 +77,7 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 			sentURL = body.URL
 			sentFileName = body.FileName
 			sentReplyTo = body.RelatesTo.InReplyTo.EventID
+			sentVoiceAIKind = body.VoiceAI.Kind
 			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$event:local"})
 		default:
 			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
@@ -144,6 +149,30 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 	}
 	if sentReplyTo != "$parent:local" {
 		t.Fatalf("expected m.in_reply_to target, got %q", sentReplyTo)
+	}
+
+	eventID, err = sink.SendMessage(ctx, MatrixOutbound{
+		RoomID:        roomID,
+		MessageID:     "$voice-ai",
+		Body:          "summary",
+		MsgType:       "m.notice",
+		ReplyToEvent:  "$parent:local",
+		TransactionID: "txn-voice-ai",
+		VoiceAI: &VoiceAIMetadata{
+			SourceMessageID: "$m-reply",
+			SourceEventID:   "$parent:local",
+			ChatID:          "!chat:beeper",
+			Kind:            voiceAIKindTranscriptSummary,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eventID != "$event:local" {
+		t.Fatalf("unexpected voice AI event ID %q", eventID)
+	}
+	if sentVoiceAIKind != voiceAIKindTranscriptSummary {
+		t.Fatalf("expected voice AI marker in Matrix payload, got %q", sentVoiceAIKind)
 	}
 
 	eventID, err = sink.SendMessage(ctx, MatrixOutbound{
