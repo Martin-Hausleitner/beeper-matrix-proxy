@@ -1,0 +1,3 @@
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{},"logging":{}},"serverInfo":{"name":"beeper_desktop_api_api","version":"4.2.2"},"instructions":"Access to all chats and messages across networks using Beeper Desktop. Can be used to find, get, send, and manage messages and chats."}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"**Open the chat in Beeper**: /open/120600"}]}}
+{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"**Open the chat in Beeper**: /open/91745"}]}}
