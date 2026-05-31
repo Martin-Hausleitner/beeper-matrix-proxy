@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-05-31T00:52:51Z",
+  "feature": "BetterVencordPatch auto-patcher",
+  "launchagent_label": "org.aaron.autovencordpatch",
+  "pid": "58926",
+  "last_exit": "0",
+  "app_installed": "/Applications/VencordInstaller.app
+true",
+  "ensure_vencord_discord": "loaded, last_exit=0",
+  "status": "LaunchAgents active ✅"
+}

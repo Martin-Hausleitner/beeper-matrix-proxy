@@ -69,20 +69,44 @@ func (a *DesktopAPIAdapter) ListChats(ctx context.Context) ([]Chat, error) {
 }
 
 func (a *DesktopAPIAdapter) ListMessages(ctx context.Context, chatID string, afterCursor string, limit int) ([]Message, string, error) {
+	page, err := a.ListMessagePage(ctx, chatID, afterCursor, "after")
+	if err != nil {
+		return nil, "", err
+	}
+	return page.Messages, page.NewestCursor, nil
+}
+
+func (a *DesktopAPIAdapter) ListMessagePage(ctx context.Context, chatID string, cursor string, direction string) (MessagePage, error) {
 	params := beeperdesktopapi.MessageListParams{}
-	if afterCursor != "" {
-		params.Cursor = beeperdesktopapi.String(afterCursor)
-		params.Direction = beeperdesktopapi.MessageListParamsDirectionAfter
+	if cursor != "" {
+		params.Cursor = beeperdesktopapi.String(cursor)
+	}
+	switch direction {
+	case "after":
+		if cursor != "" {
+			params.Direction = beeperdesktopapi.MessageListParamsDirectionAfter
+		}
+	case "before", "":
+		if cursor != "" {
+			params.Direction = beeperdesktopapi.MessageListParamsDirectionBefore
+		}
+	default:
+		return MessagePage{}, fmt.Errorf("unsupported Beeper message page direction %q", direction)
 	}
 	page, err := a.sdk.Client.Messages.List(ctx, chatID, params)
 	if err != nil {
-		return nil, "", err
+		return MessagePage{}, err
 	}
 	messages := make([]Message, 0, len(page.Items))
 	for _, item := range page.Items {
 		messages = append(messages, convertSDKMessage(item))
 	}
-	return messages, page.NewestCursor, nil
+	return MessagePage{
+		Messages:     messages,
+		OldestCursor: page.OldestCursor,
+		NewestCursor: page.NewestCursor,
+		HasMore:      page.HasMore,
+	}, nil
 }
 
 func (a *DesktopAPIAdapter) DownloadAsset(ctx context.Context, assetURL string) (*AssetStream, error) {
@@ -210,29 +234,46 @@ func (a *DesktopAPIAdapter) RemoveReaction(ctx context.Context, chatID, messageI
 }
 
 func convertSDKChat(in beeperdesktopapi.Chat) Chat {
+	participants := make([]Sender, 0, len(in.Participants.Items))
+	for _, item := range in.Participants.Items {
+		displayName := firstNonEmpty(item.FullName, item.Username, item.ID)
+		participants = append(participants, Sender{
+			ID:          item.ID,
+			DisplayName: displayName,
+			AvatarID:    item.ImgURL,
+		})
+	}
 	return Chat{
-		ID:         in.ID,
-		AccountID:  in.AccountID,
-		Network:    in.Network,
-		Name:       in.Title,
-		AvatarURL:  in.ImgURL,
-		IsGroup:    string(in.Type) == "group",
-		IsArchived: in.IsArchived,
+		ID:           in.ID,
+		AccountID:    in.AccountID,
+		Network:      in.Network,
+		Name:         in.Title,
+		AvatarURL:    in.ImgURL,
+		Participants: participants,
+		IsGroup:      string(in.Type) == "group",
+		IsArchived:   in.IsArchived,
 	}
 }
 
 func convertSDKMessage(in shared.Message) Message {
 	msg := Message{
 		ID:              in.ID,
+		AccountID:       in.AccountID,
 		ChatID:          in.ChatID,
 		SenderID:        in.SenderID,
 		SenderName:      in.SenderName,
+		SortKey:         in.SortKey,
 		Type:            string(in.Type),
 		Text:            in.Text,
 		Timestamp:       in.Timestamp,
 		IsDeleted:       in.IsDeleted,
+		IsHidden:        in.IsHidden,
+		IsSender:        in.IsSender,
+		IsUnread:        in.IsUnread,
 		LinkedMessageID: in.LinkedMessageID,
+		Mentions:        append([]string(nil), in.Mentions...),
 		Attachments:     make([]Attachment, 0, len(in.Attachments)),
+		RawJSON:         in.RawJSON(),
 	}
 	if !in.EditedTimestamp.IsZero() {
 		edited := in.EditedTimestamp

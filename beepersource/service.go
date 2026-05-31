@@ -3,6 +3,7 @@ package beepersource
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"html"
@@ -23,6 +24,7 @@ type BeeperAPI interface {
 	Health(context.Context) error
 	ListChats(context.Context) ([]Chat, error)
 	ListMessages(ctx context.Context, chatID string, afterCursor string, limit int) ([]Message, string, error)
+	ListMessagePage(ctx context.Context, chatID string, cursor string, direction string) (MessagePage, error)
 	DownloadAsset(ctx context.Context, assetURL string) (*AssetStream, error)
 	SendMessage(ctx context.Context, outbound BeeperOutbound) (string, error)
 	UpdateMessage(ctx context.Context, chatID, messageID, text string) error
@@ -31,10 +33,21 @@ type BeeperAPI interface {
 	RemoveReaction(ctx context.Context, chatID, messageID, reactionKey string) error
 }
 
+type HistoryBackfillResult struct {
+	ChatsConsidered  int
+	ChatsProcessed   int
+	MessagesSeen     int
+	MessagesMirrored int
+	CompletedChats   int
+	FailedChats      int
+}
+
 type MatrixSink interface {
 	EnsurePortal(context.Context, Chat, *MatrixMedia) (string, error)
 	EnsurePuppet(context.Context, Sender) (string, error)
 	SendMessage(context.Context, MatrixOutbound) (string, error)
+	EditMessage(context.Context, MatrixOutbound, string) (string, error)
+	RedactMessage(context.Context, string, string, string, string) (string, error)
 }
 
 type MatrixPortalAccessChecker interface {
@@ -46,14 +59,19 @@ type MatrixSpaceOrganizer interface {
 }
 
 type Service struct {
-	cfg    Config
-	store  *Store
-	api    BeeperAPI
-	matrix MatrixSink
+	cfg     Config
+	store   *Store
+	api     BeeperAPI
+	matrix  MatrixSink
+	voiceAI VoiceAIProcessor
 }
 
 func NewService(cfg Config, store *Store, api BeeperAPI, matrix MatrixSink) *Service {
-	return &Service{cfg: cfg, store: store, api: api, matrix: matrix}
+	var voiceAI VoiceAIProcessor
+	if cfg.VoiceAI.Enabled {
+		voiceAI = NewLocalVoiceAIProcessor(cfg.VoiceAI)
+	}
+	return &Service{cfg: cfg, store: store, api: api, matrix: matrix, voiceAI: voiceAI}
 }
 
 func (s *Service) ReconcileOnce(ctx context.Context) error {
@@ -81,13 +99,87 @@ func (s *Service) ReconcileOnce(ctx context.Context) error {
 			return fmt.Errorf("list Beeper messages for %s: %w", chat.ID, err)
 		}
 		for _, msg := range messages {
-			if err := s.mirrorMessage(ctx, roomID, msg); err != nil {
+			if err := s.mirrorMessage(ctx, roomID, chat, msg); err != nil {
 				return err
 			}
 		}
 		if err := s.store.UpsertPortal(ctx, chat, roomID, nextCursor); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (s *Service) BackfillHistoryOnce(ctx context.Context, chatLimit int) (HistoryBackfillResult, error) {
+	var result HistoryBackfillResult
+	if chatLimit <= 0 {
+		chatLimit = 1
+	}
+	if err := s.api.Health(ctx); err != nil {
+		return result, err
+	}
+	chats, err := s.api.ListChats(ctx)
+	if err != nil {
+		return result, err
+	}
+	var firstErr error
+	for _, chat := range chats {
+		if !s.cfg.AllowsBeeperChatRecord(chat) {
+			continue
+		}
+		result.ChatsConsidered++
+		done, err := s.store.PortalBackfillDone(ctx, chat.ID)
+		if err != nil {
+			return result, err
+		}
+		if done {
+			continue
+		}
+		if result.ChatsProcessed >= chatLimit {
+			continue
+		}
+		if err := s.backfillChatHistoryPage(ctx, chat, &result); err != nil {
+			result.FailedChats++
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		result.ChatsProcessed++
+	}
+	return result, firstErr
+}
+
+func (s *Service) backfillChatHistoryPage(ctx context.Context, chat Chat, result *HistoryBackfillResult) error {
+	roomID, err := s.ensurePortal(ctx, chat)
+	if err != nil {
+		return err
+	}
+	cursor, done, err := s.store.PortalBackfillCursor(ctx, chat.ID)
+	if err != nil {
+		return err
+	}
+	if done {
+		return nil
+	}
+	page, err := s.api.ListMessagePage(ctx, chat.ID, cursor, "before")
+	if err != nil {
+		return fmt.Errorf("list older Beeper messages for %s: %w", chat.ID, err)
+	}
+	result.MessagesSeen += len(page.Messages)
+	for _, msg := range page.Messages {
+		if err := s.mirrorMessage(ctx, roomID, chat, msg); err != nil {
+			return err
+		}
+		result.MessagesMirrored++
+	}
+	nextCursor := page.OldestCursor
+	completed := len(page.Messages) == 0 || !page.HasMore || nextCursor == ""
+	if err := s.store.SetPortalBackfillState(ctx, chat.ID, nextCursor, completed); err != nil {
+		return err
+	}
+	if completed {
+		result.CompletedChats++
 	}
 	return nil
 }
@@ -311,7 +403,7 @@ func maxPositive(a, b int) int {
 func (s *Service) ensurePortal(ctx context.Context, chat Chat) (string, error) {
 	avatar, err := s.portalAvatar(ctx, chat)
 	if err != nil {
-		return "", fmt.Errorf("prepare Matrix portal avatar for %s: %w", chat.ID, err)
+		avatar = platformAvatarMedia(chat)
 	}
 	roomID, err := s.matrix.EnsurePortal(ctx, chat, avatar)
 	if avatar != nil && avatar.Close != nil {
@@ -328,7 +420,11 @@ func (s *Service) ensurePortal(ctx context.Context, chat Chat) (string, error) {
 		return "", err
 	}
 	if avatar != nil {
-		if err := s.store.SetValue(ctx, portalAvatarSyncKey(chat.ID), s.portalAvatarSyncValue(chat)); err != nil {
+		syncValue := s.portalAvatarSyncValue(chat)
+		if avatar.AssetID != "" {
+			syncValue = avatar.AssetID
+		}
+		if err := s.store.SetValue(ctx, portalAvatarSyncKey(chat.ID), syncValue); err != nil {
 			return "", err
 		}
 	}
@@ -336,48 +432,93 @@ func (s *Service) ensurePortal(ctx context.Context, chat Chat) (string, error) {
 }
 
 func (s *Service) portalAvatar(ctx context.Context, chat Chat) (*MatrixMedia, error) {
-	if s.cfg.Matrix.PlatformAvatars {
-		lastAvatar, err := s.store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
-		if err != nil || lastAvatar == platformAvatarSyncValue(chat) {
-			return nil, err
+	if avatar, ok, err := s.contactOverrideAvatarForChat(chat); ok || err != nil {
+		if err != nil {
+			return avatar, err
 		}
-		return platformAvatarMedia(chat), nil
+		return s.badgePortalAvatar(chat, avatar)
 	}
-	if chat.AvatarURL == "" {
-		lastAvatar, err := s.store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
-		if err != nil || lastAvatar == platformAvatarSyncValue(chat) {
-			return nil, err
-		}
-		return platformAvatarMedia(chat), nil
-	}
-	avatarURL := s.resolveBeeperAssetURL(chat.AvatarURL)
+	avatarURL, platformFallback := s.portalAvatarSource(chat)
+	expectedSyncValue := s.portalAvatarSyncValue(chat)
 	lastAvatar, err := s.store.GetValue(ctx, portalAvatarSyncKey(chat.ID))
-	if err != nil || lastAvatar == avatarURL {
-		return nil, err
-	}
-	if avatar, ok, err := localAvatarMedia(avatarURL); ok || err != nil {
-		return avatar, err
-	}
-	asset, err := s.api.DownloadAsset(ctx, avatarURL)
 	if err != nil {
 		return nil, err
 	}
+	if platformFallback {
+		if !s.cfg.Matrix.ForceAvatarSync && lastAvatar == expectedSyncValue {
+			return nil, nil
+		}
+		return generatedContactAvatarMediaWithOptions(chat, s.avatarBadgeOptions()), nil
+	}
+	if avatar, ok, err := localAvatarMedia(avatarURL); ok || err != nil {
+		if !s.cfg.Matrix.ForceAvatarSync && lastAvatar == expectedSyncValue {
+			if avatar != nil && avatar.Close != nil {
+				_ = avatar.Close()
+			}
+			return nil, err
+		}
+		if err != nil {
+			return avatar, err
+		}
+		if avatar != nil {
+			avatar.AssetID = avatarURL
+		}
+		return s.badgePortalAvatar(chat, avatar)
+	}
+	asset, err := s.api.DownloadAsset(ctx, avatarURL)
+	if err != nil {
+		return generatedContactAvatarMediaWithOptions(chat, s.avatarBadgeOptions()), nil
+	}
+	body, err := io.ReadAll(asset.Content)
+	_ = asset.Content.Close()
+	if err != nil {
+		return generatedContactAvatarMediaWithOptions(chat, s.avatarBadgeOptions()), nil
+	}
 	fileName := firstNonEmpty(asset.FileName, "beeper-avatar")
 	mimeType := firstNonEmpty(asset.MimeType, "application/octet-stream")
-	return &MatrixMedia{
-		Content:   asset.Content,
-		Close:     asset.Content.Close,
-		FileName:  fileName,
-		MimeType:  mimeType,
-		SizeBytes: asset.SizeBytes,
-	}, nil
+	return s.badgePortalAvatar(chat, &MatrixMedia{
+		AssetID:     avatarURL,
+		ContentHash: fmt.Sprintf("%x", sha256.Sum256(body)),
+		Content:     bytes.NewReader(body),
+		FileName:    fileName,
+		MimeType:    mimeType,
+		SizeBytes:   int64(len(body)),
+	})
 }
 
 func (s *Service) portalAvatarSyncValue(chat Chat) string {
-	if s.cfg.Matrix.PlatformAvatars || strings.TrimSpace(chat.AvatarURL) == "" {
-		return platformAvatarSyncValue(chat)
+	avatarURL, platformFallback := s.portalAvatarSource(chat)
+	if platformFallback {
+		return generatedContactAvatarAssetIDWithOptions(chat, s.avatarBadgeOptions())
 	}
-	return s.resolveBeeperAssetURL(chat.AvatarURL)
+	if !s.cfg.Matrix.AvatarBadges {
+		return avatarURL
+	}
+	return badgedAvatarAssetIDWithOptions(chat, avatarURL, s.avatarBadgeOptions())
+}
+
+func (s *Service) portalAvatarSource(chat Chat) (string, bool) {
+	if s.cfg.Matrix.PlatformAvatars {
+		return platformAvatarSyncValue(chat), true
+	}
+	if s.cfg.Matrix.DMParticipantAvatars && !chat.IsGroup {
+		if avatarURL := firstParticipantAvatarURL(chat); avatarURL != "" {
+			return s.resolveBeeperAssetURL(avatarURL), false
+		}
+	}
+	if avatarURL := strings.TrimSpace(chat.AvatarURL); avatarURL != "" {
+		return s.resolveBeeperAssetURL(avatarURL), false
+	}
+	return platformAvatarSyncValue(chat), true
+}
+
+func firstParticipantAvatarURL(chat Chat) string {
+	for _, participant := range chat.Participants {
+		if avatarURL := strings.TrimSpace(participant.AvatarID); avatarURL != "" {
+			return avatarURL
+		}
+	}
+	return ""
 }
 
 func (s *Service) resolveBeeperAssetURL(rawURL string) string {
@@ -415,6 +556,17 @@ func looksLikeBeeperHTTPAssetPath(rawURL string) bool {
 
 func platformAvatarMedia(chat Chat) *MatrixMedia {
 	platform := PlatformDisplayName(chat)
+	if icon, ok := brandIconByKey(platform); ok {
+		if pngBytes, ok := brandIconPNGByKey(icon.Key); ok {
+			return &MatrixMedia{
+				AssetID:   platformAvatarSyncValue(chat),
+				Content:   bytes.NewReader(pngBytes),
+				FileName:  strings.ToLower(strings.ReplaceAll(platform, " ", "-")) + "-bridge.png",
+				MimeType:  "image/png",
+				SizeBytes: int64(len(pngBytes)),
+			}
+		}
+	}
 	if pngBytes, ok := platformLogoPNG(platform, PlatformColor(chat)); ok {
 		return &MatrixMedia{
 			AssetID:   platformAvatarSyncValue(chat),
@@ -466,7 +618,83 @@ func platformLogoSVG(platform string, bg string) string {
 }
 
 func platformAvatarSyncValue(chat Chat) string {
-	return "platform-logo-v3:" + PlatformDisplayName(chat)
+	return "platform-logo-v5:" + PlatformDisplayName(chat)
+}
+
+func accountSpaceAvatarMedia(chat Chat) *MatrixMedia {
+	spaceChat := Chat{
+		ID:        "account-space:" + accountSpaceKey(chat),
+		AccountID: chat.AccountID,
+		Network:   PlatformDisplayName(chat),
+		Name:      accountSpaceDisplayName(chat),
+	}
+	return generatedContactAvatarMediaWithOptions(spaceChat, defaultAvatarBadgeOptions())
+}
+
+func accountSpaceKey(chat Chat) string {
+	key := strings.TrimSpace(chat.AccountID)
+	if key == "" {
+		key = PlatformDisplayName(chat)
+	}
+	return brandIconKey(PlatformDisplayName(chat)) + ":" + sanitizeSpaceKey(key)
+}
+
+func accountSpaceDisplayName(chat Chat) string {
+	platform := PlatformDisplayName(chat)
+	login := accountLoginLabel(chat.AccountID, platform)
+	if login == "" || strings.EqualFold(login, platform) {
+		return platform + " Login"
+	}
+	return platform + " · " + login
+}
+
+func accountSpaceTopic(chat Chat) string {
+	return "Beeper " + PlatformDisplayName(chat) + " login/channel " + accountLoginLabel(chat.AccountID, PlatformDisplayName(chat))
+}
+
+func accountLoginLabel(accountID string, platform string) string {
+	label := strings.TrimSpace(accountID)
+	if label == "" {
+		return ""
+	}
+	label = strings.TrimPrefix(label, "local-")
+	prefix := strings.ToLower(platform)
+	prefix = strings.ReplaceAll(prefix, " ", "")
+	prefix = strings.ReplaceAll(prefix, ".", "")
+	normalized := strings.ToLower(label)
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, ".", "")
+	if strings.HasPrefix(normalized, prefix) {
+		for _, sep := range []string{"_", "-", "."} {
+			if idx := strings.Index(label, sep); idx >= 0 && idx+1 < len(label) {
+				label = label[idx+1:]
+				break
+			}
+		}
+	}
+	label = strings.ReplaceAll(label, "_", " ")
+	label = strings.ReplaceAll(label, "-", " ")
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return platform
+	}
+	return titleAccount(label)
+}
+
+func sanitizeSpaceKey(raw string) string {
+	key := strings.ToLower(strings.TrimSpace(raw))
+	key = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return '-'
+	}, key)
+	key = strings.Trim(key, "-_.")
+	if key == "" {
+		return "default"
+	}
+	return key
 }
 
 func localAvatarMedia(rawPath string) (*MatrixMedia, bool, error) {
@@ -496,6 +724,15 @@ func localAvatarMedia(rawPath string) (*MatrixMedia, bool, error) {
 		_ = file.Close()
 		return nil, true, err
 	}
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		_ = file.Close()
+		return nil, true, err
+	}
+	if _, err = file.Seek(0, io.SeekStart); err != nil {
+		_ = file.Close()
+		return nil, true, err
+	}
 	mimeType := mime.TypeByExtension(filepath.Ext(path))
 	if mimeType == "" {
 		head := make([]byte, 512)
@@ -507,19 +744,84 @@ func localAvatarMedia(rawPath string) (*MatrixMedia, bool, error) {
 		}
 	}
 	return &MatrixMedia{
-		Content:   file,
-		Close:     file.Close,
-		FileName:  filepath.Base(path),
-		MimeType:  mimeType,
-		SizeBytes: stat.Size(),
+		ContentHash: fmt.Sprintf("%x", hasher.Sum(nil)),
+		Content:     file,
+		Close:       file.Close,
+		FileName:    filepath.Base(path),
+		MimeType:    mimeType,
+		SizeBytes:   stat.Size(),
 	}, true, nil
+}
+
+func senderForMessage(chat Chat, msg Message) Sender {
+	sender := Sender{
+		ID:          msg.SenderID,
+		DisplayName: msg.SenderName,
+	}
+	for _, participant := range chat.Participants {
+		if participant.ID != msg.SenderID {
+			continue
+		}
+		if sender.DisplayName == "" {
+			sender.DisplayName = participant.DisplayName
+		}
+		sender.AvatarID = participant.AvatarID
+		break
+	}
+	return sender
+}
+
+func (s *Service) senderAvatarMedia(ctx context.Context, sender Sender) (*MatrixMedia, error) {
+	if avatar, ok, err := s.contactOverrideAvatarForSender(sender); ok || err != nil {
+		return avatar, err
+	}
+	avatarURL := s.resolveBeeperAssetURL(sender.AvatarID)
+	if avatarURL == "" {
+		return nil, nil
+	}
+	if cached, ok, err := s.store.MediaByAssetID(ctx, avatarURL); err != nil {
+		return nil, err
+	} else if ok {
+		return &MatrixMedia{
+			AssetID:   avatarURL,
+			CachedMXC: cached.CachedMXC,
+			FileName:  "beeper-sender-avatar",
+			MimeType:  cached.MimeType,
+			SizeBytes: cached.SizeBytes,
+			Close:     func() error { return nil },
+		}, nil
+	}
+	if avatar, ok, err := localAvatarMedia(avatarURL); ok || err != nil {
+		if avatar != nil {
+			avatar.AssetID = avatarURL
+		}
+		return avatar, err
+	}
+	asset, err := s.api.DownloadAsset(ctx, avatarURL)
+	if err != nil {
+		return nil, err
+	}
+	fileName := firstNonEmpty(asset.FileName, "beeper-sender-avatar")
+	mimeType := firstNonEmpty(asset.MimeType, mime.TypeByExtension(filepath.Ext(fileName)), "application/octet-stream")
+	return &MatrixMedia{
+		AssetID:   avatarURL,
+		Content:   asset.Content,
+		Close:     asset.Content.Close,
+		FileName:  fileName,
+		MimeType:  mimeType,
+		SizeBytes: asset.SizeBytes,
+	}, nil
 }
 
 func portalAvatarSyncKey(chatID string) string {
 	return "portal_avatar:" + chatID
 }
 
-func (s *Service) mirrorMessage(ctx context.Context, roomID string, msg Message) error {
+func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, msg Message) error {
+	if err := s.store.UpsertBeeperMessageRaw(ctx, msg); err != nil {
+		return err
+	}
+	sender := senderForMessage(chat, msg)
 	existing, ok, err := s.store.MessageByBeeperID(ctx, msg.ID)
 	if err != nil {
 		return err
@@ -527,11 +829,74 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, msg Message)
 	version := MessageVersion(msg)
 	if ok {
 		if existing.Version == version {
-			return nil
+			if len(msg.Attachments) > 0 {
+				if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, msg.Attachments[0], msg.ID, existing.MatrixEventID, version); err != nil {
+					return err
+				}
+			}
+			return s.mirrorAdditionalAttachments(ctx, roomID, chat, msg, sender, existing.MatrixEventID, version)
+		}
+		if msg.IsDeleted {
+			txnID := DeterministicTxnID(msg.ChatID, msg.ID, MutationDelete, version)
+			if _, err := s.matrix.RedactMessage(ctx, roomID, existing.MatrixEventID, txnID, "deleted in Beeper source"); err != nil {
+				return err
+			}
+			now := time.Now().UTC()
+			existing.Version = version
+			existing.DeletedAt = &now
+			if err := s.store.UpsertMessageMapping(ctx, existing); err != nil {
+				return err
+			}
+			return s.redactAdditionalAttachments(ctx, roomID, msg, version)
+		}
+		edit := s.matrixOutboundForMessage(roomID, msg, sender, version)
+		if avatar, err := s.senderAvatarMedia(ctx, sender); err == nil && avatar != nil {
+			defer avatar.Close()
+			edit.SenderAvatar = avatar
+		}
+		edit.TransactionID = DeterministicTxnID(msg.ChatID, msg.ID, MutationEdit, version)
+		if media, err := s.matrixMedia(ctx, msg); err != nil {
+			edit.MsgType = "m.notice"
+			edit.Body = fmt.Sprintf("Unsupported or unavailable Beeper media: %s", err)
+		} else if media != nil {
+			defer media.Close()
+			edit.Media = media
+		}
+		if edit.ReplyToEvent == "" && msg.LinkedMessageID != "" {
+			replyTo, ok, err := s.store.MessageByBeeperID(ctx, msg.LinkedMessageID)
+			if err != nil {
+				return err
+			}
+			if ok {
+				edit.ReplyToEvent = replyTo.MatrixEventID
+			}
+		}
+		if _, err := s.matrix.EditMessage(ctx, edit, existing.MatrixEventID); err != nil {
+			if edit.Media != nil {
+				edit.Media = nil
+				edit.MsgType = "m.notice"
+				edit.Body = fmt.Sprintf("Beeper media could not be mirrored to Matrix: %v", err)
+				if _, retryErr := s.matrix.EditMessage(ctx, edit, existing.MatrixEventID); retryErr == nil {
+					err = nil
+				} else {
+					err = retryErr
+				}
+			}
+			if err != nil {
+				return err
+			}
 		}
 		existing.Version = version
 		existing.DeletedAt = nil
-		return s.store.UpsertMessageMapping(ctx, existing)
+		if err := s.store.UpsertMessageMapping(ctx, existing); err != nil {
+			return err
+		}
+		if len(msg.Attachments) > 0 {
+			if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, msg.Attachments[0], msg.ID, existing.MatrixEventID, version); err != nil {
+				return err
+			}
+		}
+		return s.mirrorAdditionalAttachments(ctx, roomID, chat, msg, sender, existing.MatrixEventID, version)
 	}
 	body := messageBody(msg)
 	if matrixEventID, ok, err := s.store.ConsumeOutboundEcho(ctx, msg.ChatID, body); err != nil {
@@ -544,24 +909,15 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, msg Message)
 			Version:         version,
 		})
 	}
-	senderMXID, err := s.matrix.EnsurePuppet(ctx, Sender{
-		ID:          msg.SenderID,
-		DisplayName: msg.SenderName,
-	})
+	senderMXID, err := s.matrix.EnsurePuppet(ctx, sender)
 	if err != nil {
 		return err
 	}
-	outbound := MatrixOutbound{
-		RoomID:        roomID,
-		MessageID:     msg.ID,
-		SenderID:      msg.SenderID,
-		SenderName:    msg.SenderName,
-		SenderMXID:    senderMXID,
-		Body:          body,
-		HTML:          msg.HTML,
-		MsgType:       matrixMsgType(msg),
-		Timestamp:     msg.Timestamp,
-		TransactionID: DeterministicTxnID(msg.ChatID, msg.ID, MutationMessage, version),
+	outbound := s.matrixOutboundForMessage(roomID, msg, sender, version)
+	outbound.SenderMXID = senderMXID
+	if avatar, err := s.senderAvatarMedia(ctx, sender); err == nil && avatar != nil {
+		defer avatar.Close()
+		outbound.SenderAvatar = avatar
 	}
 	if msg.LinkedMessageID != "" {
 		replyTo, ok, err := s.store.MessageByBeeperID(ctx, msg.LinkedMessageID)
@@ -589,19 +945,177 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, msg Message)
 	if err != nil {
 		return err
 	}
-	return s.store.UpsertMessageMapping(ctx, MessageMapping{
+	if err := s.store.UpsertMessageMapping(ctx, MessageMapping{
 		BeeperMessageID: msg.ID,
 		MatrixEventID:   eventID,
 		ChatID:          msg.ChatID,
 		Version:         version,
-	})
+	}); err != nil {
+		return err
+	}
+	if len(msg.Attachments) > 0 {
+		if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, msg.Attachments[0], msg.ID, eventID, version); err != nil {
+			return err
+		}
+	}
+	return s.mirrorAdditionalAttachments(ctx, roomID, chat, msg, sender, eventID, version)
+}
+
+func (s *Service) matrixOutboundForMessage(roomID string, msg Message, sender Sender, version string) MatrixOutbound {
+	return MatrixOutbound{
+		RoomID:        roomID,
+		MessageID:     msg.ID,
+		AccountID:     msg.AccountID,
+		ChatID:        msg.ChatID,
+		SenderID:      sender.ID,
+		SenderName:    sender.DisplayName,
+		SortKey:       msg.SortKey,
+		Body:          messageBody(msg),
+		HTML:          msg.HTML,
+		MsgType:       matrixMsgType(msg),
+		Timestamp:     msg.Timestamp,
+		TransactionID: DeterministicTxnID(msg.ChatID, msg.ID, MutationMessage, version),
+		IsHidden:      msg.IsHidden,
+		IsSender:      msg.IsSender,
+		IsUnread:      msg.IsUnread,
+		Mentions:      append([]string(nil), msg.Mentions...),
+	}
+}
+
+func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string, chat Chat, msg Message, sender Sender, primaryEventID string, version string) error {
+	if len(msg.Attachments) <= 1 {
+		return nil
+	}
+	senderMXID, err := s.matrix.EnsurePuppet(ctx, sender)
+	if err != nil {
+		return err
+	}
+	for index := 1; index < len(msg.Attachments); index++ {
+		mappingID := attachmentMessageID(msg, index)
+		att := msg.Attachments[index]
+		existing, exists, err := s.store.MessageByBeeperID(ctx, mappingID)
+		if err != nil {
+			return err
+		}
+		if exists && existing.Version == version {
+			if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, att, mappingID, existing.MatrixEventID, version); err != nil {
+				return err
+			}
+			continue
+		}
+		outbound := MatrixOutbound{
+			RoomID:        roomID,
+			MessageID:     mappingID,
+			AccountID:     msg.AccountID,
+			ChatID:        msg.ChatID,
+			SenderID:      sender.ID,
+			SenderName:    sender.DisplayName,
+			SenderMXID:    senderMXID,
+			SortKey:       msg.SortKey,
+			Body:          firstNonEmpty(att.FileName, msg.Text, "Beeper attachment"),
+			MsgType:       matrixMsgTypeForAttachment(att, msg.Type),
+			Timestamp:     msg.Timestamp,
+			ReplyToEvent:  primaryEventID,
+			TransactionID: DeterministicTxnID(msg.ChatID, mappingID, MutationMessage, version),
+			IsHidden:      msg.IsHidden,
+			IsSender:      msg.IsSender,
+			IsUnread:      msg.IsUnread,
+			Mentions:      append([]string(nil), msg.Mentions...),
+			AttachmentID:  att.ID,
+			AttachmentIdx: index,
+		}
+		if avatar, err := s.senderAvatarMedia(ctx, sender); err == nil && avatar != nil {
+			defer avatar.Close()
+			outbound.SenderAvatar = avatar
+		}
+		if media, err := s.matrixMediaForAttachment(ctx, att); err != nil {
+			outbound.MsgType = "m.notice"
+			outbound.Body = fmt.Sprintf("Unsupported or unavailable Beeper media: %s", err)
+		} else if media != nil {
+			defer media.Close()
+			outbound.Media = media
+		}
+		if exists {
+			outbound.TransactionID = DeterministicTxnID(msg.ChatID, mappingID, MutationEdit, version)
+			if _, err := s.matrix.EditMessage(ctx, outbound, existing.MatrixEventID); err != nil {
+				if outbound.Media != nil {
+					outbound.Media = nil
+					outbound.MsgType = "m.notice"
+					outbound.Body = fmt.Sprintf("Beeper media could not be mirrored to Matrix: %v", err)
+					if _, retryErr := s.matrix.EditMessage(ctx, outbound, existing.MatrixEventID); retryErr == nil {
+						err = nil
+					} else {
+						err = retryErr
+					}
+				}
+				if err != nil {
+					return err
+				}
+			}
+			existing.Version = version
+			existing.DeletedAt = nil
+			if err := s.store.UpsertMessageMapping(ctx, existing); err != nil {
+				return err
+			}
+			continue
+		}
+		eventID, err := s.matrix.SendMessage(ctx, outbound)
+		if err != nil && outbound.Media != nil {
+			outbound.Media = nil
+			outbound.MsgType = "m.notice"
+			outbound.Body = fmt.Sprintf("Beeper media could not be mirrored to Matrix: %v", err)
+			eventID, err = s.matrix.SendMessage(ctx, outbound)
+		}
+		if err != nil {
+			return err
+		}
+		if err := s.store.UpsertMessageMapping(ctx, MessageMapping{
+			BeeperMessageID: mappingID,
+			MatrixEventID:   eventID,
+			ChatID:          msg.ChatID,
+			Version:         version,
+		}); err != nil {
+			return err
+		}
+		if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, att, mappingID, eventID, version); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) redactAdditionalAttachments(ctx context.Context, roomID string, msg Message, version string) error {
+	mappings, err := s.store.MessageMappingsByChat(ctx, msg.ChatID)
+	if err != nil {
+		return err
+	}
+	prefix := msg.ID + "/attachment/"
+	for _, existing := range mappings {
+		if !strings.HasPrefix(existing.BeeperMessageID, prefix) || existing.DeletedAt != nil {
+			continue
+		}
+		txnID := DeterministicTxnID(msg.ChatID, existing.BeeperMessageID, MutationDelete, version)
+		if _, err := s.matrix.RedactMessage(ctx, roomID, existing.MatrixEventID, txnID, "deleted in Beeper source"); err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		existing.Version = version
+		existing.DeletedAt = &now
+		if err := s.store.UpsertMessageMapping(ctx, existing); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) matrixMedia(ctx context.Context, msg Message) (*MatrixMedia, error) {
 	if len(msg.Attachments) == 0 {
 		return nil, nil
 	}
-	att := msg.Attachments[0]
+	return s.matrixMediaForAttachment(ctx, msg.Attachments[0])
+}
+
+func (s *Service) matrixMediaForAttachment(ctx context.Context, att Attachment) (*MatrixMedia, error) {
 	if att.URL == "" {
 		return nil, nil
 	}
@@ -618,6 +1132,10 @@ func (s *Service) matrixMedia(ctx context.Context, msg Message) (*MatrixMedia, e
 	if sizeBytes == 0 {
 		sizeBytes = asset.SizeBytes
 	}
+	if s.cfg.Media.MaxUploadBytes > 0 && sizeBytes > s.cfg.Media.MaxUploadBytes {
+		_ = asset.Content.Close()
+		return nil, fmt.Errorf("%s is %d bytes, over configured Matrix upload limit %d", fileName, sizeBytes, s.cfg.Media.MaxUploadBytes)
+	}
 	return &MatrixMedia{
 		Content:     asset.Content,
 		Close:       asset.Content.Close,
@@ -632,9 +1150,30 @@ func (s *Service) matrixMedia(ctx context.Context, msg Message) (*MatrixMedia, e
 	}, nil
 }
 
+func attachmentMessageID(msg Message, index int) string {
+	if index <= 0 {
+		return msg.ID
+	}
+	return fmt.Sprintf("%s/attachment/%d", msg.ID, index)
+}
+
+func (s *Service) matrixToBeeperDisabled() bool {
+	return s.cfg.Safety.DisableMatrixToBeeper || s.cfg.Sync.Mode == SyncModeReadOnly
+}
+
 func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound) error {
-	if s.cfg.Safety.DisableMatrixToBeeper || s.cfg.Sync.Mode == SyncModeReadOnly {
+	if s.matrixToBeeperDisabled() {
 		return ErrMatrixToBeeperDisabled
+	}
+	pendingVoiceAI, err := s.prepareMatrixInboundVoiceAI(ctx, &inbound)
+	if err != nil {
+		return err
+	}
+	if pendingVoiceAI != nil && pendingVoiceAI.cleanup != nil {
+		defer pendingVoiceAI.cleanup()
+	}
+	if inbound.Attachment != nil && inbound.Attachment.Content != nil {
+		defer inbound.Attachment.Content.Close()
 	}
 	version := inbound.MatrixEventID
 	if version == "" {
@@ -651,7 +1190,7 @@ func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound
 			replyToID = replyTo.BeeperMessageID
 		}
 	}
-	_, err := s.api.SendMessage(ctx, BeeperOutbound{
+	beeperMessageID, err := s.api.SendMessage(ctx, BeeperOutbound{
 		ChatID:      inbound.ChatID,
 		Text:        inbound.Body,
 		HTML:        inbound.HTML,
@@ -662,10 +1201,26 @@ func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound
 	if err != nil {
 		return err
 	}
-	return s.store.RememberOutboundEcho(ctx, inbound.ChatID, inbound.Body, inbound.MatrixEventID, 10*time.Minute)
+	if beeperMessageID != "" && inbound.MatrixEventID != "" {
+		if err := s.store.UpsertMessageMapping(ctx, MessageMapping{
+			BeeperMessageID: beeperMessageID,
+			MatrixEventID:   inbound.MatrixEventID,
+			ChatID:          inbound.ChatID,
+			Version:         firstNonEmpty(inbound.MatrixEventID, inbound.Body),
+		}); err != nil {
+			return err
+		}
+	}
+	if err := s.store.RememberOutboundEcho(ctx, inbound.ChatID, inbound.Body, inbound.MatrixEventID, 10*time.Minute); err != nil {
+		return err
+	}
+	return s.completeMatrixInboundVoiceAI(ctx, pendingVoiceAI, beeperMessageID, inbound.MatrixEventID)
 }
 
 func (s *Service) HandleMatrixEdit(ctx context.Context, chatID, matrixTargetEventID, text string) error {
+	if s.matrixToBeeperDisabled() {
+		return ErrMatrixToBeeperDisabled
+	}
 	mapping, ok, err := s.store.MessageByMatrixEventID(ctx, matrixTargetEventID)
 	if err != nil {
 		return err
@@ -677,6 +1232,19 @@ func (s *Service) HandleMatrixEdit(ctx context.Context, chatID, matrixTargetEven
 }
 
 func (s *Service) HandleMatrixRedaction(ctx context.Context, chatID, matrixTargetEventID string) error {
+	if s.matrixToBeeperDisabled() {
+		return ErrMatrixToBeeperDisabled
+	}
+	reaction, ok, err := s.store.ReactionByMatrixEventID(ctx, matrixTargetEventID)
+	if err != nil {
+		return err
+	}
+	if ok {
+		if err := s.api.RemoveReaction(ctx, chatID, reaction.BeeperMessageID, reaction.ReactionKey); err != nil {
+			return err
+		}
+		return s.store.DeleteReactionMapping(ctx, matrixTargetEventID)
+	}
 	mapping, ok, err := s.store.MessageByMatrixEventID(ctx, matrixTargetEventID)
 	if err != nil {
 		return err
@@ -688,6 +1256,9 @@ func (s *Service) HandleMatrixRedaction(ctx context.Context, chatID, matrixTarge
 }
 
 func (s *Service) HandleMatrixReaction(ctx context.Context, chatID, matrixEventID, matrixTargetEventID, reactionKey string) error {
+	if s.matrixToBeeperDisabled() {
+		return ErrMatrixToBeeperDisabled
+	}
 	mapping, ok, err := s.store.MessageByMatrixEventID(ctx, matrixTargetEventID)
 	if err != nil {
 		return err
@@ -696,7 +1267,14 @@ func (s *Service) HandleMatrixReaction(ctx context.Context, chatID, matrixEventI
 		return nil
 	}
 	txnID := DeterministicTxnID(chatID, matrixEventID, MutationReaction, reactionKey)
-	return s.api.AddReaction(ctx, chatID, mapping.BeeperMessageID, reactionKey, txnID)
+	if err := s.api.AddReaction(ctx, chatID, mapping.BeeperMessageID, reactionKey, txnID); err != nil {
+		return err
+	}
+	return s.store.UpsertReactionMapping(ctx, ReactionMapping{
+		BeeperMessageID: mapping.BeeperMessageID,
+		ReactionKey:     reactionKey,
+		MatrixEventID:   matrixEventID,
+	})
 }
 
 func messageBody(msg Message) string {
@@ -716,6 +1294,9 @@ func matrixMsgType(msg Message) string {
 	if msg.IsDeleted {
 		return "m.notice"
 	}
+	if len(msg.Attachments) > 0 {
+		return matrixMsgTypeForAttachment(msg.Attachments[0], msg.Type)
+	}
 	switch msg.Type {
 	case MessageTypeImage:
 		return "m.image"
@@ -731,6 +1312,35 @@ func matrixMsgType(msg Message) string {
 		return "m.notice"
 	default:
 		return "m.text"
+	}
+}
+
+func matrixMsgTypeForAttachment(att Attachment, fallbackType string) string {
+	if att.IsSticker || fallbackType == MessageTypeSticker {
+		return "m.sticker"
+	}
+	mimeType := strings.ToLower(att.MimeType)
+	switch {
+	case strings.HasPrefix(mimeType, "image/"):
+		return "m.image"
+	case strings.HasPrefix(mimeType, "video/"):
+		return "m.video"
+	case strings.HasPrefix(mimeType, "audio/"):
+		return "m.audio"
+	}
+	switch fallbackType {
+	case MessageTypeImage:
+		return "m.image"
+	case MessageTypeVideo:
+		return "m.video"
+	case MessageTypeAudio, MessageTypeVoice:
+		return "m.audio"
+	case MessageTypeFile:
+		return "m.file"
+	case MessageTypeNotice:
+		return "m.notice"
+	default:
+		return "m.file"
 	}
 }
 

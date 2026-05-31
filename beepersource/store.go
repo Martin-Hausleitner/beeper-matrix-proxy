@@ -54,6 +54,8 @@ func (s *Store) migrate(ctx context.Context) error {
 			matrix_room_id TEXT UNIQUE,
 			account_id TEXT,
 			last_cursor TEXT,
+			backfill_cursor TEXT,
+			backfill_done INTEGER NOT NULL DEFAULT 0,
 			last_reconcile_at INTEGER
 		)`,
 		`CREATE TABLE IF NOT EXISTS puppet (
@@ -76,6 +78,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			matrix_event_id TEXT NOT NULL,
 			PRIMARY KEY (beeper_message_id, reaction_key)
 		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS reaction_mapping_matrix_event_idx ON reaction_mapping(matrix_event_id)`,
 		`CREATE TABLE IF NOT EXISTS pending_mutation (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			beeper_message_id TEXT NOT NULL,
@@ -111,13 +114,83 @@ func (s *Store) migrate(ctx context.Context) error {
 			PRIMARY KEY (chat_id, body, matrix_event_id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS outbound_echo_lookup_idx ON outbound_echo(chat_id, body, expires_at)`,
+		`CREATE TABLE IF NOT EXISTS beeper_message_raw (
+			beeper_message_id TEXT PRIMARY KEY,
+			chat_id TEXT NOT NULL,
+			account_id TEXT,
+			sort_key TEXT,
+			raw_json TEXT NOT NULL,
+			updated_at INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS beeper_message_raw_chat_idx ON beeper_message_raw(chat_id)`,
 	}
 	for _, stmt := range schema {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
+	if err := s.addColumnIfMissing(ctx, "portal", "backfill_cursor", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing(ctx, "portal", "backfill_done", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (s *Store) UpsertBeeperMessageRaw(ctx context.Context, msg Message) error {
+	if msg.ID == "" || msg.RawJSON == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO beeper_message_raw (beeper_message_id, chat_id, account_id, sort_key, raw_json, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(beeper_message_id) DO UPDATE SET
+			chat_id=excluded.chat_id,
+			account_id=excluded.account_id,
+			sort_key=excluded.sort_key,
+			raw_json=excluded.raw_json,
+			updated_at=excluded.updated_at
+	`, msg.ID, msg.ChatID, msg.AccountID, msg.SortKey, msg.RawJSON, time.Now().Unix())
+	return err
+}
+
+func (s *Store) BeeperMessageRaw(ctx context.Context, messageID string) (string, bool, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, "SELECT raw_json FROM beeper_message_raw WHERE beeper_message_id=?", messageID).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return raw, true, nil
+}
+
+func (s *Store) addColumnIfMissing(ctx context.Context, table, column, definition string) error {
+	rows, err := s.db.QueryContext(ctx, "PRAGMA table_info("+table+")")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, "ALTER TABLE "+table+" ADD COLUMN "+column+" "+definition)
+	return err
 }
 
 func (s *Store) RememberOutboundEcho(ctx context.Context, chatID string, body string, matrixEventID string, ttl time.Duration) error {
@@ -211,6 +284,44 @@ func (s *Store) PortalCursor(ctx context.Context, chatID string) (string, error)
 	return cursor.String, nil
 }
 
+func (s *Store) PortalBackfillCursor(ctx context.Context, chatID string) (string, bool, error) {
+	var cursor sql.NullString
+	var done int
+	err := s.db.QueryRowContext(ctx, "SELECT backfill_cursor, backfill_done FROM portal WHERE beeper_chat_id=?", chatID).Scan(&cursor, &done)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return cursor.String, done != 0, nil
+}
+
+func (s *Store) PortalBackfillDone(ctx context.Context, chatID string) (bool, error) {
+	var done int
+	err := s.db.QueryRowContext(ctx, "SELECT backfill_done FROM portal WHERE beeper_chat_id=?", chatID).Scan(&done)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return done != 0, nil
+}
+
+func (s *Store) SetPortalBackfillState(ctx context.Context, chatID string, cursor string, done bool) error {
+	doneInt := 0
+	if done {
+		doneInt = 1
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE portal
+		SET backfill_cursor=?, backfill_done=?, last_reconcile_at=?
+		WHERE beeper_chat_id=?
+	`, cursor, doneInt, time.Now().Unix(), chatID)
+	return err
+}
+
 func (s *Store) PortalRoomID(ctx context.Context, chatID string) (string, bool, error) {
 	var roomID string
 	err := s.db.QueryRowContext(ctx, "SELECT matrix_room_id FROM portal WHERE beeper_chat_id=?", chatID).Scan(&roomID)
@@ -221,6 +332,20 @@ func (s *Store) PortalRoomID(ctx context.Context, chatID string) (string, bool, 
 		return "", false, err
 	}
 	return roomID, true, nil
+}
+
+func (s *Store) PortalChat(ctx context.Context, chatID string) (Chat, bool, error) {
+	var chat Chat
+	var roomID string
+	err := s.db.QueryRowContext(ctx, "SELECT beeper_chat_id, matrix_room_id, account_id FROM portal WHERE beeper_chat_id=?", chatID).Scan(&chat.ID, &roomID, &chat.AccountID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Chat{}, false, nil
+	}
+	if err != nil {
+		return Chat{}, false, err
+	}
+	chat.Network = PlatformDisplayName(chat)
+	return chat, true, nil
 }
 
 func (s *Store) PortalChatIDByRoomID(ctx context.Context, matrixRoomID string) (string, bool, error) {
@@ -251,6 +376,12 @@ func (s *Store) UpsertMessageMapping(ctx context.Context, mapping MessageMapping
 	var deletedAt any
 	if mapping.DeletedAt != nil {
 		deletedAt = mapping.DeletedAt.Unix()
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		DELETE FROM message_mapping
+		WHERE matrix_event_id=? AND beeper_message_id<>?
+	`, mapping.MatrixEventID, mapping.BeeperMessageID); err != nil {
+		return err
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO message_mapping (beeper_message_id, matrix_event_id, chat_id, version, deleted_at)
@@ -346,6 +477,62 @@ func (s *Store) MessageByMatrixEventID(ctx context.Context, matrixEventID string
 		mapping.DeletedAt = &t
 	}
 	return mapping, true, nil
+}
+
+func (s *Store) MessageMappingsByChat(ctx context.Context, chatID string) ([]MessageMapping, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT beeper_message_id, matrix_event_id, chat_id, version, deleted_at
+		FROM message_mapping WHERE chat_id=?
+		ORDER BY beeper_message_id
+	`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var mappings []MessageMapping
+	for rows.Next() {
+		var mapping MessageMapping
+		var deletedAt sql.NullInt64
+		if err := rows.Scan(&mapping.BeeperMessageID, &mapping.MatrixEventID, &mapping.ChatID, &mapping.Version, &deletedAt); err != nil {
+			return nil, err
+		}
+		if deletedAt.Valid {
+			t := time.Unix(deletedAt.Int64, 0).UTC()
+			mapping.DeletedAt = &t
+		}
+		mappings = append(mappings, mapping)
+	}
+	return mappings, rows.Err()
+}
+
+func (s *Store) UpsertReactionMapping(ctx context.Context, mapping ReactionMapping) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO reaction_mapping (beeper_message_id, reaction_key, matrix_event_id)
+		VALUES (?, ?, ?)
+		ON CONFLICT(beeper_message_id, reaction_key) DO UPDATE SET
+			matrix_event_id=excluded.matrix_event_id
+	`, mapping.BeeperMessageID, mapping.ReactionKey, mapping.MatrixEventID)
+	return err
+}
+
+func (s *Store) ReactionByMatrixEventID(ctx context.Context, matrixEventID string) (ReactionMapping, bool, error) {
+	var mapping ReactionMapping
+	err := s.db.QueryRowContext(ctx, `
+		SELECT beeper_message_id, reaction_key, matrix_event_id
+		FROM reaction_mapping WHERE matrix_event_id=?
+	`, matrixEventID).Scan(&mapping.BeeperMessageID, &mapping.ReactionKey, &mapping.MatrixEventID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ReactionMapping{}, false, nil
+	}
+	if err != nil {
+		return ReactionMapping{}, false, err
+	}
+	return mapping, true, nil
+}
+
+func (s *Store) DeleteReactionMapping(ctx context.Context, matrixEventID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM reaction_mapping WHERE matrix_event_id=?`, matrixEventID)
+	return err
 }
 
 func (s *Store) EnqueuePendingMutation(ctx context.Context, mutation PendingMutation) (int64, error) {

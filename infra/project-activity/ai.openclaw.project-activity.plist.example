@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.openclaw.project-activity</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src/scripts/project_activity.py</string>
+    <string>report</string>
+    <string>--config</string>
+    <string>/Users/mh/Library/Application Support/openclaw/project-activity/projects.json</string>
+    <string>--days</string>
+    <string>1</string>
+    <string>--format</string>
+    <string>json</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/mh/Documents/Playground/sh-vcvm-matrix-bridgev2-src</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/mh/Library/Application Support/openclaw/project-activity/project-activity.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/mh/Library/Application Support/openclaw/project-activity/project-activity.err.log</string>
+</dict>
+</plist>

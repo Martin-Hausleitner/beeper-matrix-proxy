@@ -1,0 +1,15 @@
+User ID: @martinhltr:beeper.com
+Name: Martin Hausleitner
+Email: a.m@hausleitner.eu
+Support room ID: 
+Registered at: Apr 10 2024, 10:21:35 CEST
+Cloud bridge details:
+  Update channel: STABLE
+  Cluster ID: edge-eu-green-haze
+  Hungryserv URL: https://matrix.beeper.com/_hungryserv/martinhltr
+Bridges:
+  hungryserv (version: e732875b) - RUNNING
+  discordgo (version: 5d3595ee) - RUNNING - not logged in
+  signal (version: 22522806) - RUNNING - remote: CONNECTED (+436607229911 / a81e98d6-dd32-49a1-b316-a452f409d08c)
+  telegram (version: fcc3b5da) - RUNNING - remote: CONNECTED (martin1000 / 1455475598)
+  whatsapp (version: b46b41ed) - RUNNING - remote: CONNECTED (+436607229911 / 436607229911)

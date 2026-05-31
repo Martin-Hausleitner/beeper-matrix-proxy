@@ -20,6 +20,16 @@ func TestPlatformDisplayNameFallsBackFromAccountID(t *testing.T) {
 	}
 }
 
+func TestPlatformDisplayNameMapsMatrixProxyAliases(t *testing.T) {
+	cases := []string{"sh-vcvm-matrix", "beeper-matrix-proxy", "bridgev2"}
+	for _, accountID := range cases {
+		chat := Chat{AccountID: accountID}
+		if got := PlatformDisplayName(chat); got != "Matrix" {
+			t.Fatalf("PlatformDisplayName(%q) = %q, want Matrix", accountID, got)
+		}
+	}
+}
+
 func TestPlatformAvatarMediaUsesMessengerInitials(t *testing.T) {
 	avatar := platformAvatarMedia(Chat{AccountID: "whatsapp", Network: "WhatsApp"})
 	if avatar == nil {
@@ -37,6 +47,9 @@ func TestPlatformAvatarMediaUsesMessengerLogoForKnownServices(t *testing.T) {
 	avatar := platformAvatarMedia(Chat{AccountID: "signal", Network: "Signal"})
 	body := readMatrixMediaBytes(t, avatar)
 
+	if avatar.AssetID != "platform-logo-v5:Signal" {
+		t.Fatalf("expected v5 direct app icon cache key, got %q", avatar.AssetID)
+	}
 	if avatar.MimeType != "image/png" {
 		t.Fatalf("expected Signal logo PNG, got %s", avatar.MimeType)
 	}

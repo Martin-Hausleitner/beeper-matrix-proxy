@@ -1,0 +1,1288 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Avatar Configurator</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #050608;
+        --panel: #121419;
+        --panel-2: #191c22;
+        --line: #2a2e37;
+        --text: #f4f6fb;
+        --muted: #9aa1ad;
+        --accent: #54d987;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Poppins, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 34px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 26px;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .hint {
+        margin: -6px 0 13px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: minmax(330px, 420px) minmax(0, 1fr);
+        gap: 18px;
+      }
+
+      .controls,
+      .preview {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .controls {
+        padding: 16px;
+      }
+
+      .preview {
+        min-height: 660px;
+        padding: 18px;
+      }
+
+      label {
+        display: grid;
+        gap: 7px;
+        margin: 0 0 13px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      textarea,
+      select,
+      input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #090b10;
+        color: var(--text);
+        font: inherit;
+        font-size: 14px;
+        outline: none;
+      }
+
+      textarea {
+        min-height: 116px;
+        padding: 10px 11px;
+        resize: vertical;
+        line-height: 1.35;
+      }
+
+      select,
+      input[type="number"] {
+        height: 38px;
+        padding: 0 10px;
+      }
+
+      input[type="range"] {
+        accent-color: var(--accent);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .checkline {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 13px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .checkline input {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--accent);
+      }
+
+      .value {
+        float: right;
+        color: var(--text);
+        font-weight: 800;
+        text-transform: none;
+      }
+
+      .stage {
+        display: grid;
+        grid-template-columns: 250px minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      .phone {
+        width: 250px;
+        min-height: 548px;
+        background: #000;
+        border: 1px solid #24262b;
+        border-radius: 30px;
+        padding: 22px 14px;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
+      }
+
+      .phone-title {
+        text-align: center;
+        font-size: 16px;
+        font-weight: 800;
+        margin-bottom: 18px;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 62px minmax(0, 1fr);
+        gap: 11px;
+        align-items: center;
+        min-height: 76px;
+        border-bottom: 1px solid #202226;
+      }
+
+      .row canvas {
+        width: 58px;
+        height: 58px;
+        border-radius: 50%;
+      }
+
+      .name {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        font-size: 15px;
+        font-weight: 800;
+      }
+
+      .message {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        color: #858992;
+        font-size: 13px;
+        margin-top: 4px;
+      }
+
+      .proof {
+        display: grid;
+        gap: 14px;
+      }
+
+      .gallery {
+        grid-column: 1 / -1;
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+        gap: 12px;
+      }
+
+      .gallery-card {
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        display: grid;
+        gap: 9px;
+      }
+
+      .gallery-card canvas {
+        width: 100%;
+        aspect-ratio: 1;
+        border-radius: 50%;
+      }
+
+      body[data-client-profile="cinny"] .row canvas,
+      body[data-client-profile="cinny"] .big canvas,
+      body[data-client-profile="cinny"] .gallery-card canvas {
+        border-radius: 14px;
+      }
+
+      .gallery-title {
+        font-size: 13px;
+        font-weight: 850;
+      }
+
+      .gallery-metrics {
+        color: var(--muted);
+        font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        white-space: pre-wrap;
+      }
+
+      .gallery-pass {
+        color: #78efa8;
+      }
+
+      .gallery-fail {
+        color: #ff8f8f;
+      }
+
+      .source-card {
+        display: grid;
+        gap: 12px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .source-title {
+        font-size: 13px;
+        font-weight: 850;
+      }
+
+      .source-body {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+      }
+
+      .source-kind {
+        display: inline-flex;
+        width: fit-content;
+        border: 1px solid #31593e;
+        border-radius: 999px;
+        background: rgba(84, 217, 135, 0.12);
+        color: #7deda7;
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .icon-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+        gap: 8px;
+      }
+
+      .icon-strip button {
+        width: 46px;
+        height: 46px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #090b10;
+        padding: 5px;
+        cursor: pointer;
+      }
+
+      .icon-strip button.active {
+        border-color: var(--accent);
+      }
+
+      .icon-strip img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        border-radius: 9px;
+      }
+
+      .big {
+        display: grid;
+        justify-items: center;
+        gap: 12px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+      }
+
+      .big canvas {
+        width: min(360px, 100%);
+        aspect-ratio: 1;
+        border-radius: 50%;
+      }
+
+      pre {
+        margin: 0;
+        max-height: 232px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #090b10;
+        padding: 13px;
+        color: #d7dce6;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      @media (max-width: 860px) {
+        .shell,
+        .stage {
+          grid-template-columns: 1fr;
+        }
+
+        .phone {
+          width: 100%;
+          min-height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="topbar">
+        <h1>Beeper Group Avatar Configurator</h1>
+        <div class="status" id="status">offline render</div>
+      </div>
+
+      <div class="shell">
+        <section class="controls">
+          <label>
+            Teilnehmer
+            <textarea id="participants">Ich | 999
+Anna Novak | 240
+Ben Berger | 128
+Clara Chen | 54
+David Duran | 17
+Eva Eder | 6
+Felix Faber | 2</textarea>
+          </label>
+
+          <label class="checkline">
+            <input id="excludeSelf" type="checkbox" checked />
+            Eigenes Konto ausblenden
+          </label>
+
+          <label class="checkline">
+            <input id="fallbackBadges" type="checkbox" checked />
+            App-Badge immer anzeigen
+          </label>
+
+          <label>
+            Eigene IDs/Aliasse
+            <input id="selfIds" value="Ich, Me, You, Du" />
+          </label>
+
+          <label>
+            Matrix-Client-Profil
+            <select id="clientProfile">
+              <option value="cinny">Cinny</option>
+              <option value="element">Element</option>
+              <option value="generic">Generic Matrix</option>
+              <option value="beeper-native">Beeper/BIPA native</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <div class="hint">BIPA/Beeper native nutzt standardmaessig normale Profilbilder; fuer ein Initialen-Only-Setup kannst du Badge und Avatar-Quelle unten manuell ueberschreiben. `beeper-native` ist die kanonische Ausgabe fuer BIPA/Beeper-Aliasse.</div>
+
+          <div class="grid">
+            <label>
+              Plattform
+              <select id="platform">
+                <option value="whatsapp">WhatsApp</option>
+                <option value="signal">Signal</option>
+                <option value="telegram">Telegram</option>
+                <option value="imessage">iMessage</option>
+                <option value="discord">Discord</option>
+                <option value="email">E-Mail</option>
+                <option value="onlyfans">OnlyFans</option>
+                <option value="fansly">Fansly</option>
+              </select>
+            </label>
+
+            <label>
+              Gruppenstil
+              <select id="groupStyle">
+                <option value="auto">Bubbles</option>
+                <option value="initials">Einzel-Initialen</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="grid">
+            <label>
+              Badge-Position
+              <select id="badgePosition">
+                <option value="bottom-right">unten rechts</option>
+                <option value="bottom-left">unten links</option>
+                <option value="top-right">oben rechts</option>
+                <option value="top-left">oben links</option>
+              </select>
+            </label>
+
+            <label>
+              Badge-Layout
+              <select id="badgeLayout">
+                <option value="circle-safe">kreis-sicher</option>
+                <option value="edge">eng an der Ecke</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Max. Personen <span class="value" id="maxParticipantsValue">6</span>
+            <input id="maxParticipants" type="range" min="2" max="10" value="6" />
+          </label>
+
+          <label>
+            Bubble-Abstand <span class="value" id="overlapValue">34%</span>
+            <input id="overlap" type="range" min="0" max="42" value="34" />
+          </label>
+
+          <label>
+            Badge-Größe <span class="value" id="badgeSizeValue">26%</span>
+            <input id="badgeSize" type="range" min="18" max="42" value="26" />
+          </label>
+
+          <label>
+            Badge-Inset <span class="value" id="badgeInsetValue">1%</span>
+            <input id="badgeInset" type="range" min="0" max="16" value="1" />
+          </label>
+
+              <label>
+            YAML
+            <pre id="configOutput"></pre>
+          </label>
+          <div class="hint">Proofs und Screenshots nur mit Demo- oder redigierten Namen veroeffentlichen.</div>
+        </section>
+
+        <section class="preview">
+          <div class="stage">
+            <div class="phone">
+              <div class="phone-title">All Chats</div>
+              <div class="row">
+                <canvas id="rowAvatar" width="256" height="256"></canvas>
+                <div>
+                  <div class="name" id="rowName">Projektgruppe</div>
+                  <div class="message" id="rowMessage">Anna: Avatar proof synced</div>
+                </div>
+              </div>
+              <div class="row">
+                <canvas id="rowAvatar2" width="256" height="256"></canvas>
+                <div>
+                  <div class="name">Fintaro Team</div>
+                  <div class="message">Clara: Signal bridge active</div>
+                </div>
+              </div>
+              <div class="row">
+                <canvas id="rowAvatar3" width="256" height="256"></canvas>
+                <div>
+                  <div class="name">Creator Ops</div>
+                  <div class="message">Ben: Badge stays visible</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="proof">
+              <div class="big">
+                <canvas id="mainAvatar" width="256" height="256"></canvas>
+                <div class="status" id="proofText">4 Farben, Plattform-Badge unten rechts</div>
+              </div>
+              <pre id="proofOutput"></pre>
+              <div class="source-card">
+                <div class="source-title">Icon-Quelle</div>
+                <div class="source-kind" id="iconSourceKind">local</div>
+                <div class="source-body" id="iconSource">Lade lokales Manifest...</div>
+                <div class="icon-strip" id="iconStrip"></div>
+              </div>
+            </div>
+          </div>
+          <div class="gallery" id="sampleGallery"></div>
+        </section>
+      </div>
+    </main>
+
+    <script src="./icon-manifest.js"></script>
+    <script>
+      const iconBase = "../../beepersource/assets/brand-icons/icons";
+      let platformLabels = {
+        whatsapp: "WhatsApp",
+        signal: "Signal",
+        telegram: "Telegram",
+        imessage: "iMessage",
+        discord: "Discord",
+        email: "E-Mail",
+        onlyfans: "OnlyFans",
+        fansly: "Fansly",
+      };
+      let iconManifest = [];
+      const fallbackIconManifest = Object.entries(platformLabels).map(([key, label]) => ({
+        key,
+        label,
+        source_kind: "local-icon",
+        source: `${iconBase}/${key}.png`,
+      }));
+      const uiAvatarFontSize = 0.4375;
+      const crcTable = Array.from({ length: 256 }, (_, index) => {
+        let c = index;
+        for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        return c >>> 0;
+      });
+      const iconCache = new Map();
+      const controls = {
+        participants: document.querySelector("#participants"),
+        clientProfile: document.querySelector("#clientProfile"),
+        platform: document.querySelector("#platform"),
+        groupStyle: document.querySelector("#groupStyle"),
+        badgePosition: document.querySelector("#badgePosition"),
+        badgeLayout: document.querySelector("#badgeLayout"),
+        maxParticipants: document.querySelector("#maxParticipants"),
+        overlap: document.querySelector("#overlap"),
+        badgeSize: document.querySelector("#badgeSize"),
+        badgeInset: document.querySelector("#badgeInset"),
+        fallbackBadges: document.querySelector("#fallbackBadges"),
+        excludeSelf: document.querySelector("#excludeSelf"),
+        selfIds: document.querySelector("#selfIds"),
+      };
+
+      function applyClientProfile(profile) {
+        const profiles = {
+          cinny: { badgeLayout: "edge", groupStyle: "auto", maxParticipants: 10, overlap: 34, badgeSize: 28, badgeInset: 0, fallbackBadges: true },
+          element: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 10, overlap: 32, badgeSize: 26, badgeInset: 4, fallbackBadges: true },
+          generic: { badgeLayout: "circle-safe", groupStyle: "auto", maxParticipants: 6, overlap: 30, badgeSize: 26, badgeInset: 4, fallbackBadges: true },
+          "beeper-native": { badgeLayout: "circle-safe", groupStyle: "initials", maxParticipants: 2, overlap: 0, badgeSize: 22, badgeInset: 3, fallbackBadges: false },
+        };
+        const next = profiles[profile];
+        if (!next) return;
+        controls.badgeLayout.value = next.badgeLayout;
+        controls.groupStyle.value = next.groupStyle;
+        controls.maxParticipants.value = next.maxParticipants;
+        controls.overlap.value = next.overlap;
+        controls.badgeSize.value = next.badgeSize;
+        controls.badgeInset.value = next.badgeInset;
+        controls.fallbackBadges.checked = next.fallbackBadges;
+      }
+
+      function crc32(input) {
+        const bytes = new TextEncoder().encode(String(input));
+        let crc = 0xffffffff;
+        for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+        return (crc ^ 0xffffffff) >>> 0;
+      }
+
+      function hslToHex(h, s, l) {
+        const c = (1 - Math.abs(2 * l - 1)) * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = l - c / 2;
+        let red = 0;
+        let green = 0;
+        let blue = 0;
+        if (h < 60) [red, green, blue] = [c, x, 0];
+        else if (h < 120) [red, green, blue] = [x, c, 0];
+        else if (h < 180) [red, green, blue] = [0, c, x];
+        else if (h < 240) [red, green, blue] = [0, x, c];
+        else if (h < 300) [red, green, blue] = [x, 0, c];
+        else [red, green, blue] = [c, 0, x];
+        return [red + m, green + m, blue + m]
+          .map((value) => Math.trunc(clamp(value * 255, 0, 255)).toString(16).padStart(2, "0"))
+          .join("");
+      }
+
+      function shiftHex(hex, delta) {
+        const value = String(hex).replace("#", "");
+        const r = clamp(parseInt(value.slice(0, 2), 16) + delta, 0, 255);
+        const g = clamp(parseInt(value.slice(2, 4), 16) + delta, 0, 255);
+        const b = clamp(parseInt(value.slice(4, 6), 16) + delta, 0, 255);
+        return `#${[r, g, b].map((part) => Math.round(part).toString(16).padStart(2, "0")).join("")}`;
+      }
+
+      function contrastText(hex) {
+        return "#ffffff";
+      }
+
+      function uiAvatarStyle(name) {
+        const background = `#${hslToHex(crc32(name) % 360, 0.62, 0.58)}`;
+        return {
+          background,
+          text: contrastText(background),
+          gradient: [shiftHex(background, 16), shiftHex(background, -22)],
+        };
+      }
+
+      function initials(name) {
+        if (String(name).trim().startsWith("+")) return String(name).trim();
+        const parts = String(name)
+          .trim()
+          .split(/[\s._:/@-]+/)
+          .filter(Boolean);
+        const clean = parts
+          .map((part) => Array.from(part).filter((char) => /[\p{L}\p{N}]/u.test(char)).map((char) => char.toUpperCase()))
+          .filter((chars) => chars.length);
+        if (!clean.length) return "?";
+        if (clean.length === 1) return clean[0].slice(0, 2).join("");
+        return `${clean[0][0]}${clean[clean.length - 1][0]}`;
+      }
+
+      function parseParticipantLine(line) {
+        const text = String(line).trim();
+        const match = text.match(/^(.*?)\s*(?:\||;|,)\s*(\d+)\s*(?:messages?|nachrichten?)?\s*$/i);
+        if (match) {
+          return { name: match[1].trim(), messageCount: Number(match[2]) };
+        }
+        return { name: text, messageCount: 0 };
+      }
+
+      function rawParticipantList() {
+        return controls.participants.value
+          .split(/\n/)
+          .map(parseParticipantLine)
+          .filter((participant) => participant.name);
+      }
+
+      function selfIdList() {
+        return controls.selfIds.value
+          .split(/\n|,/)
+          .map((name) => name.trim().toLowerCase())
+          .filter(Boolean);
+      }
+
+      function participantList() {
+        const selfIds = new Set(selfIdList());
+        const filtered = rawParticipantList().filter((name) => {
+          if (!controls.excludeSelf.checked) return true;
+          return !selfIds.has(name.name.toLowerCase());
+        });
+        if (filtered.some((participant) => participant.messageCount > 0)) {
+          filtered.sort((a, b) => b.messageCount - a.messageCount);
+        }
+        const max = Number(controls.maxParticipants.value);
+        if (filtered.length > max && max >= 2) {
+          const hidden = filtered.length - (max - 1);
+          return [...filtered.slice(0, max - 1), { name: `+${hidden}`, messageCount: 1 }];
+        }
+        return filtered.slice(0, max);
+      }
+
+      function gradientFor(name, index) {
+        const style = uiAvatarStyle(name);
+        if (index % 3 === 1) return [shiftHex(style.gradient[0], 6), shiftHex(style.gradient[1], -6)];
+        if (index % 3 === 2) return [shiftHex(style.gradient[0], -4), shiftHex(style.gradient[1], 8)];
+        return style.gradient;
+      }
+
+      function loadIcon(platform) {
+        if (iconCache.has(platform)) return iconCache.get(platform);
+        const image = new Image();
+        const promise = new Promise((resolve) => {
+          image.onload = () => resolve(image);
+          image.onerror = () => resolve(null);
+        });
+        image.src = `${iconBase}/${platform}.png`;
+        iconCache.set(platform, promise);
+        return promise;
+      }
+
+      function iconSourceLabel(kind) {
+        const labels = {
+          "local-app-icon": "lokales App-Icon",
+          "apple-touch-icon": "Apple Touch Icon",
+          "manifest-icon": "Web-App Manifest",
+          "explicit-fallback": "Apple/common fallback",
+          "apple-app-store-icon": "App-Store App-Icon",
+          "simple-icons": "Simple Icons fallback",
+          "simple-icons-app-tile": "Simple Icons App-Kachel",
+          "custom-app-tile": "normalisierte App-Kachel",
+          "custom-modern-app-tile": "modernes App-Icon",
+          "custom-brand-app-tile": "Brand-App-Kachel",
+          "local-icon": "lokales Icon",
+        };
+        return labels[kind] || kind || "unbekannt";
+      }
+
+      async function loadIconManifest() {
+        try {
+          const response = await fetch("../../beepersource/assets/brand-icons/manifest.json");
+          if (!response.ok) throw new Error(`manifest ${response.status}`);
+          const manifest = await response.json();
+          iconManifest = Array.isArray(manifest.icons) ? manifest.icons : fallbackIconManifest;
+        } catch {
+          iconManifest = window.BRAND_ICON_MANIFEST?.icons?.length
+            ? window.BRAND_ICON_MANIFEST.icons
+            : fallbackIconManifest;
+        }
+        platformLabels = Object.fromEntries(iconManifest.map((entry) => [entry.key, entry.label || entry.key]));
+        populatePlatformSelect();
+        renderIconStrip();
+      }
+
+      function populatePlatformSelect() {
+        const select = controls.platform;
+        const selected = select.value || "whatsapp";
+        select.innerHTML = "";
+        for (const entry of iconManifest) {
+          const option = document.createElement("option");
+          option.value = entry.key;
+          option.textContent = entry.label || entry.key;
+          select.appendChild(option);
+        }
+        select.value = platformLabels[selected] ? selected : "whatsapp";
+      }
+
+      function renderIconStrip() {
+        const strip = document.querySelector("#iconStrip");
+        strip.innerHTML = "";
+        for (const entry of iconManifest) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.title = `${entry.label || entry.key} · ${iconSourceLabel(entry.source_kind)}`;
+          button.dataset.platform = entry.key;
+          const img = document.createElement("img");
+          img.alt = entry.label || entry.key;
+          img.src = `${iconBase}/${entry.key}.png`;
+          button.appendChild(img);
+          button.addEventListener("click", () => {
+            controls.platform.value = entry.key;
+            render();
+          });
+          strip.appendChild(button);
+        }
+      }
+
+      function renderIconSource(platform) {
+        const entry = iconManifest.find((item) => item.key === platform);
+        const kind = entry?.source_kind || "local-icon";
+        document.querySelector("#iconSourceKind").textContent = iconSourceLabel(kind);
+        document.querySelector("#iconSource").textContent = entry?.source || `${iconBase}/${platform}.png`;
+        document.querySelectorAll("#iconStrip button").forEach((button) => {
+          button.classList.toggle("active", button.dataset.platform === platform);
+        });
+      }
+
+      function roundedRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+
+      function badgeRect(config) {
+        const size = Math.round((256 * config.badgeSize) / 100);
+        const inset = Math.round((256 * config.badgeInset) / 100);
+        let x;
+        let y;
+        if (config.badgeLayout === "circle-safe") {
+          const radius = 128;
+          const badgeRadius = size / 2;
+          const limitRadius = size * 0.707;
+          const centerOffset = Math.round((radius - limitRadius) * 0.707);
+          x = Math.round(radius + centerOffset - badgeRadius);
+          y = Math.round(radius + centerOffset - badgeRadius);
+        } else {
+          x = 256 - size - inset;
+          y = 256 - size - inset;
+        }
+        if (config.badgePosition.endsWith("left")) x = 256 - size - x;
+        if (config.badgePosition.startsWith("top")) y = 256 - size - y;
+        return { x, y, size };
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function paddedBubbleLayout(bubbles, gap, badge) {
+        const badgeCX = badge.x + badge.size / 2;
+        const badgeCY = badge.y + badge.size / 2;
+        const badgeR = Math.round(badge.size * 0.707);
+        const badgeGap = groupAvatarBadgeGap(gap);
+        const outerGap = groupAvatarOuterGap();
+        const avatarCX = 128;
+        const avatarCY = 128;
+        const avatarR = 128 - outerGap;
+        let scale = groupAvatarMaxScale(bubbles.length);
+        for (const bubble of bubbles) {
+          const limits = [
+            bubble.cx - gap,
+            bubble.cy - gap,
+            256 - bubble.cx - gap,
+            256 - bubble.cy - gap,
+          ];
+          for (const limit of limits) {
+            scale = Math.min(scale, limit > 0 ? limit / bubble.r : 0);
+          }
+          const circleLimit = avatarR - Math.hypot(bubble.cx - avatarCX, bubble.cy - avatarCY);
+          scale = Math.min(scale, circleLimit > 0 ? circleLimit / bubble.r : 0);
+          const badgeLimit = Math.hypot(bubble.cx - badgeCX, bubble.cy - badgeCY) - badgeR - badgeGap;
+          scale = Math.min(scale, badgeLimit > 0 ? badgeLimit / bubble.r : 0);
+        }
+        for (let i = 0; i < bubbles.length; i += 1) {
+          for (let j = i + 1; j < bubbles.length; j += 1) {
+            const a = bubbles[i];
+            const b = bubbles[j];
+            const limit = Math.hypot(a.cx - b.cx, a.cy - b.cy) - gap;
+            scale = Math.min(scale, limit > 0 ? limit / (a.r + b.r) : 0);
+          }
+        }
+        if (scale <= 0) scale = 0.35;
+        for (const bubble of bubbles) {
+          bubble.r = Math.max(12, Math.floor(bubble.r * scale));
+        }
+        return bubbles;
+      }
+
+      function groupAvatarBadgeGap(bubbleGap) {
+        return Math.max(12, bubbleGap + 8);
+      }
+
+      function groupAvatarOuterGap() {
+        return 5;
+      }
+
+      function groupAvatarMaxScale(count) {
+        if (count <= 2) return 1.45;
+        if (count === 3) return 1.25;
+        if (count === 4) return 1.15;
+        if (count <= 6) return 1.12;
+        return 1.08;
+      }
+
+      function bubbleLayout(participants, overlap, config = currentConfig()) {
+        const count = Math.max(1, Math.min(10, participants.length));
+        const gap = 2 + Math.floor(clamp(overlap, 0, 42) / 21);
+        const r = groupAvatarBaseRadius(count);
+        const maxCount = Math.max(1, ...participants.slice(0, count).map((participant) => participant.messageCount || 1));
+        const radii = participants.slice(0, count).map((participant) => {
+          let radius = r;
+          if (maxCount > 1) {
+            const ratio = Math.sqrt(Math.max(0, (participant.messageCount || 1) / maxCount));
+            radius = Math.round(r * (0.78 + 0.22 * ratio));
+            radius = Math.max(count <= 4 ? 26 : 18, radius);
+          }
+          return radius;
+        });
+        const points = groupAvatarBubbleCenters(radii, gap);
+        const bubbles = points.map(([cx, cy], index) => {
+          const participant = participants[index];
+          const radius = radii[index];
+          return { cx, cy, r: radius, name: participant.name, messageCount: participant.messageCount || 1 };
+        });
+        const badge = badgeRect(config);
+        return paddedBubbleLayout(bubbles, gap, badge);
+      }
+
+      function groupAvatarBubbleCenters(radii, gap) {
+        const simple = [
+          [[128, 128]],
+          [[140, 78], [76, 166]],
+          [[72, 76], [162, 82], [82, 164]],
+          [[70, 74], [156, 82], [78, 160], [132, 136]],
+        ];
+        if (radii.length <= 4) return simple[radii.length - 1].map((point) => [...point]);
+        if (radii.length >= 5) return normalizeGroupBubbleCenters(groupAvatarFixedCenters(radii.length), radii);
+        const r = (index) => radii[index] + gap;
+        const points = [];
+        points[0] = [96, 78];
+        points[1] = [points[0][0] + r(0) + radii[1], points[0][1]];
+        points[2] = [
+          points[1][0] + (r(1) + radii[2]) * Math.cos(Math.PI / 5),
+          points[1][1] + (r(1) + radii[2]) * Math.sin(Math.PI / 5),
+        ];
+        points[3] = tangentCircleCenter(points[0], r(0) + radii[3], points[1], r(1) + radii[3], 1);
+        points[4] = tangentCircleCenter(points[0], r(0) + radii[4], points[3], r(3) + radii[4], 1);
+        if (radii.length === 5) return normalizeGroupBubbleCenters(points.slice(0, 5), radii);
+        points[5] = tangentCircleCenter(points[3], r(3) + radii[5], points[4], r(4) + radii[5], -1);
+        return normalizeGroupBubbleCenters(points, radii);
+      }
+
+      function groupAvatarFixedCenters(count) {
+        const layouts = {
+          5: [[76, 72], [150, 74], [198, 100], [70, 146], [128, 132]],
+          6: [[70, 66], [142, 66], [200, 98], [106, 124], [54, 144], [96, 194]],
+          7: [[70, 60], [124, 56], [178, 76], [86, 104], [140, 104], [44, 132], [98, 150]],
+          8: [[70, 60], [124, 56], [178, 76], [86, 104], [140, 104], [44, 132], [98, 150], [60, 190]],
+          9: [[70, 60], [124, 56], [178, 76], [86, 104], [140, 104], [44, 132], [98, 150], [60, 190], [100, 218]],
+          10: [[68, 58], [120, 54], [172, 74], [84, 100], [136, 100], [42, 128], [94, 146], [58, 184], [112, 184], [82, 220]],
+        };
+        return (layouts[count] || layouts[10]).map((point) => [...point]);
+      }
+
+      function groupAvatarBaseRadius(count) {
+        if (count <= 1) return 56;
+        if (count === 2) return 36;
+        if (count === 3) return 39;
+        if (count === 4) return 37;
+        if (count === 5) return 32;
+        if (count === 6) return 29;
+        if (count === 7) return 26;
+        if (count === 8) return 24;
+        if (count === 9) return 22;
+        return 20;
+      }
+
+      function tangentCircleCenter(a, ar, b, br, sign) {
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const d = Math.hypot(dx, dy);
+        if (!d) return [a[0], a[1] + ar];
+        const x = (ar * ar - br * br + d * d) / (2 * d);
+        const h = Math.sqrt(Math.max(0, ar * ar - x * x));
+        const mx = a[0] + (x * dx) / d;
+        const my = a[1] + (x * dy) / d;
+        return [
+          mx + sign * h * (-dy / d),
+          my + sign * h * (dx / d),
+        ];
+      }
+
+      function normalizeGroupBubbleCenters(points, radii) {
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        points.forEach((point, index) => {
+          const r = radii[index];
+          minX = Math.min(minX, point[0] - r);
+          minY = Math.min(minY, point[1] - r);
+          maxX = Math.max(maxX, point[0] + r);
+          maxY = Math.max(maxY, point[1] + r);
+        });
+        const targetX = 124;
+        const targetY = points.length >= 6 ? 114 : 112;
+        const dx = targetX - (minX + maxX) / 2;
+        const dy = targetY - (minY + maxY) / 2;
+        return points.map((point) => [point[0] + dx, point[1] + dy]);
+      }
+
+      async function drawAvatar(canvas, config, participantsOverride = null) {
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, 256, 256);
+        const participants = participantsOverride || participantList();
+
+        if (config.groupStyle === "initials" || participants.length < 2) {
+          const name = participants[0]?.name || "Projektgruppe";
+          const pair = gradientFor(name, 0);
+          const gradient = ctx.createLinearGradient(32, 26, 226, 232);
+          gradient.addColorStop(0, pair[0]);
+          gradient.addColorStop(1, pair[1]);
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, 256, 256);
+          ctx.fillStyle = uiAvatarStyle(name).text;
+          ctx.font = `800 ${Math.round(256 * uiAvatarFontSize)}px Poppins, Inter, system-ui`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(initials(name), 128, 132);
+        } else {
+          drawNeutralGroupBackground(ctx);
+          const bubbles = bubbleLayout(participants, config.overlap, config);
+          bubbles.forEach((bubble, index) => {
+            ctx.save();
+            ctx.shadowColor = "transparent";
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.beginPath();
+            ctx.arc(bubble.cx, bubble.cy, bubble.r, 0, Math.PI * 2);
+            ctx.closePath();
+            const pair = gradientFor(bubble.name, index);
+            const gradient = ctx.createLinearGradient(bubble.cx - bubble.r, bubble.cy - bubble.r, bubble.cx + bubble.r, bubble.cy + bubble.r);
+            gradient.addColorStop(0, pair[0]);
+            gradient.addColorStop(1, pair[1]);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            ctx.restore();
+          });
+          bubbles.forEach((bubble) => {
+            ctx.fillStyle = uiAvatarStyle(bubble.name).text;
+            ctx.shadowColor = "rgba(0,0,0,.24)";
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 1;
+            ctx.font = `800 ${bubble.r * 2 * uiAvatarFontSize}px Poppins, Inter, system-ui`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(initials(bubble.name), bubble.cx, bubble.cy + 1);
+            ctx.shadowColor = "transparent";
+          });
+        }
+
+        const icon = await loadIcon(config.platform);
+        if (icon && config.fallbackBadges) {
+          const rect = badgeRect(config);
+          ctx.save();
+          ctx.shadowColor = "transparent";
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetY = 0;
+          roundedRect(ctx, rect.x, rect.y, rect.size, rect.size, Math.round(rect.size / 4));
+          ctx.clip();
+          ctx.drawImage(icon, rect.x, rect.y, rect.size, rect.size);
+          ctx.restore();
+        }
+      }
+
+      function drawNeutralGroupBackground(ctx) {
+        const bg = ctx.createLinearGradient(28, 20, 230, 238);
+        bg.addColorStop(0, "#f8f9fb");
+        bg.addColorStop(1, "#d9dee8");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, 256, 256);
+        ctx.fillStyle = "rgba(255,255,255,.07)";
+        roundedRect(ctx, 0, 0, 256, 256, 64);
+        ctx.fill();
+      }
+
+      function avatarLayoutMetrics(participants, config) {
+        if (config.groupStyle === "initials" || participants.length < 2) {
+          const name = participants[0]?.name || "Projektgruppe";
+          return {
+            status: "pass",
+            failures: [],
+            rendered_count: participants.length,
+            single_full_initials: true,
+            expected_bubble_gap_px: 0,
+            expected_badge_gap_px: groupAvatarBadgeGap(0),
+            min_pair_gap_px: "n/a",
+            min_badge_gap_px: "badge drawn after initials",
+            min_circle_clearance_px: 0,
+            min_edge_clearance_px: 0,
+            used_box_px: [256, 256],
+            badge_render_order: "after_full_initials",
+            icon_src_is_local: true,
+            initials_text_color: uiAvatarStyle(name).text,
+            bubbles: [],
+          };
+        }
+        const bubbles = bubbleLayout(participants, config.overlap, config);
+        const gap = 2 + Math.floor(clamp(config.overlap, 0, 42) / 21);
+        const badgeGap = groupAvatarBadgeGap(gap);
+        const outerGap = groupAvatarOuterGap();
+        const badge = badgeRect(config);
+        const badgeCX = badge.x + badge.size / 2;
+        const badgeCY = badge.y + badge.size / 2;
+        const badgeR = badge.size * 0.707;
+        const pairGaps = [];
+        for (let i = 0; i < bubbles.length; i += 1) {
+          for (let j = i + 1; j < bubbles.length; j += 1) {
+            const a = bubbles[i];
+            const b = bubbles[j];
+            pairGaps.push(Math.hypot(a.cx - b.cx, a.cy - b.cy) - a.r - b.r);
+          }
+        }
+        const badgeGaps = bubbles.map((bubble) => Math.hypot(bubble.cx - badgeCX, bubble.cy - badgeCY) - bubble.r - badgeR);
+        const circleClearances = bubbles.map((bubble) => 128 - outerGap - Math.hypot(bubble.cx - 128, bubble.cy - 128) - bubble.r);
+        const edgeClearances = bubbles.flatMap((bubble) => [
+          bubble.cx - bubble.r,
+          bubble.cy - bubble.r,
+          256 - bubble.cx - bubble.r,
+          256 - bubble.cy - bubble.r,
+        ]);
+        const minX = Math.min(...bubbles.map((bubble) => bubble.cx - bubble.r));
+        const maxX = Math.max(...bubbles.map((bubble) => bubble.cx + bubble.r));
+        const minY = Math.min(...bubbles.map((bubble) => bubble.cy - bubble.r));
+        const maxY = Math.max(...bubbles.map((bubble) => bubble.cy + bubble.r));
+        const min = (values) => values.length ? Math.min(...values) : Infinity;
+        const round = (value) => Math.round(value * 10) / 10;
+        const failures = [];
+        if (min(pairGaps) < gap - 1) failures.push("bubble-gap");
+        if (min(badgeGaps) < badgeGap - 1) failures.push("badge-gap");
+        if (min(circleClearances) < -0.5) failures.push("circle-crop");
+        if (min(edgeClearances) < -0.5) failures.push("edge-crop");
+        if (bubbles.some((bubble) => uiAvatarStyle(bubble.name).text !== "#ffffff")) failures.push("text-color");
+        return {
+          status: failures.length ? "fail" : "pass",
+          failures,
+          rendered_count: bubbles.length,
+          expected_bubble_gap_px: gap,
+          expected_badge_gap_px: badgeGap,
+          min_pair_gap_px: round(min(pairGaps)),
+          min_badge_gap_px: round(min(badgeGaps)),
+          min_circle_clearance_px: round(min(circleClearances)),
+          min_edge_clearance_px: round(min(edgeClearances)),
+          used_box_px: [round(maxX - minX), round(maxY - minY)],
+          badge_render_order: "after_bubbles",
+          icon_src_is_local: true,
+          initials_text_color: "#ffffff",
+          bubbles: bubbles.map((bubble) => ({
+            name: bubble.name,
+            initials: initials(bubble.name),
+            radius_px: Math.round(bubble.r),
+            center_px: [Math.round(bubble.cx), Math.round(bubble.cy)],
+          })),
+        };
+      }
+
+      const galleryNames = [
+        "Anna Novak",
+        "Ben Berger",
+        "Clara Chen",
+        "David Duran",
+        "Eva Eder",
+        "Felix Faber",
+        "Gustav Årgonson",
+        "Hannah Huber",
+        "Ivan Ilic",
+        "Jana Jung",
+      ];
+
+      function galleryParticipants(count, stress = false) {
+        return galleryNames.slice(0, count).map((name, index) => ({
+          name,
+          messageCount: stress ? Math.max(1, Math.round(420 / (index + 1))) : Math.max(1, 260 - index * 24),
+        }));
+      }
+
+      async function renderSampleGallery(config) {
+        const gallery = document.querySelector("#sampleGallery");
+        const samples = [
+          ...Array.from({ length: 10 }, (_, index) => ({ count: index + 1, stress: false })),
+          { count: 10, stress: true },
+        ];
+        gallery.innerHTML = "";
+        for (const sample of samples) {
+          const card = document.createElement("div");
+          card.className = "gallery-card";
+          const title = document.createElement("div");
+          title.className = "gallery-title";
+          title.textContent = sample.stress ? "10 Profile, stark gewichtet" : `${sample.count} ${sample.count === 1 ? "Profil" : "Profile"}`;
+          const canvas = document.createElement("canvas");
+          canvas.width = 256;
+          canvas.height = 256;
+          const metrics = avatarLayoutMetrics(galleryParticipants(sample.count, sample.stress), { ...config, maxParticipants: sample.count });
+          const metricEl = document.createElement("div");
+          metricEl.className = `gallery-metrics ${metrics.status === "pass" ? "gallery-pass" : "gallery-fail"}`;
+          metricEl.textContent = metrics.single_full_initials ? `${metrics.status.toUpperCase()}
+single full initials
+badge after initials
+box ${metrics.used_box_px[0]}x${metrics.used_box_px[1]}` : `${metrics.status.toUpperCase()}
+gap ${metrics.min_pair_gap_px}px / badge ${metrics.min_badge_gap_px}px
+circle ${metrics.min_circle_clearance_px}px / edge ${metrics.min_edge_clearance_px}px
+box ${metrics.used_box_px[0]}x${metrics.used_box_px[1]}`;
+          card.append(title, canvas, metricEl);
+          gallery.append(card);
+          await drawAvatar(canvas, { ...config, maxParticipants: sample.count }, galleryParticipants(sample.count, sample.stress));
+        }
+      }
+
+      function currentConfig() {
+        const clientProfile = controls.clientProfile.value;
+        return {
+          clientProfile,
+          platform: controls.platform.value,
+          groupStyle: controls.groupStyle.value,
+          badgePosition: controls.badgePosition.value,
+          badgeLayout: controls.badgeLayout.value,
+          maxParticipants: Number(controls.maxParticipants.value),
+          overlap: Number(controls.overlap.value),
+          badgeSize: Number(controls.badgeSize.value),
+          badgeInset: Number(controls.badgeInset.value),
+          fallbackBadges: controls.fallbackBadges.checked,
+          excludeSelf: controls.excludeSelf.checked,
+          selfIds: selfIdList(),
+        };
+      }
+
+      async function render() {
+        const config = currentConfig();
+        document.body.dataset.clientProfile = config.clientProfile;
+        document.querySelector("#maxParticipantsValue").textContent = config.maxParticipants;
+        document.querySelector("#overlapValue").textContent = `${config.overlap}%`;
+        document.querySelector("#badgeSizeValue").textContent = `${config.badgeSize}%`;
+        document.querySelector("#badgeInsetValue").textContent = `${config.badgeInset}%`;
+        const names = participantList();
+        document.querySelector("#rowMessage").textContent = `${names[0]?.name || "Anna"}: ${platformLabels[config.platform]} proof synced`;
+        const badgeLabel = config.fallbackBadges ? `${platformLabels[config.platform]}-Badge ${config.badgePosition}` : "ohne Badge";
+        document.querySelector("#proofText").textContent = `${names.length} Farben, ${config.clientProfile}-Profil, ${badgeLabel}`;
+        renderIconSource(config.platform);
+        document.querySelector("#configOutput").textContent = `avatar_badge:
+  client_profile: ${config.clientProfile}
+  fallback_badges: ${config.fallbackBadges}
+  position: ${config.badgePosition}
+  layout: ${config.badgeLayout}
+  shape: rounded
+  size_percent: ${config.badgeSize}
+  inset_percent: ${config.badgeInset}
+  shadow: false
+group_avatar:
+  style: ${config.groupStyle}
+  max_participants: ${config.maxParticipants}
+  overlap_percent: ${config.overlap} # used as bubble gap/padding in the local renderer
+  exclude_self: ${config.excludeSelf}
+  self_ids: [${config.selfIds.map((id) => `"${id}"`).join(", ")}]
+
+# Initials-only statt echte Profilfotos:
+matrix:
+  dm_participant_avatars: false`;
+        document.querySelector("#proofOutput").textContent = JSON.stringify({
+          private_data: false,
+          platform: config.platform,
+          client_profile: config.clientProfile,
+          fallback_badges: config.fallbackBadges,
+          raw_participants: rawParticipantList(),
+          rendered_participants: names,
+          self_excluded: config.excludeSelf,
+          bubble_layout: bubbleLayout(names, config.overlap, config).map((bubble, index) => ({
+            name: bubble.name,
+            initials: initials(bubble.name),
+            message_count: bubble.messageCount,
+            radius_px: bubble.r,
+            gap_percent: config.overlap,
+            center_px: [Math.round(bubble.cx), Math.round(bubble.cy)],
+            gradient: gradientFor(bubble.name, index),
+            text_color: uiAvatarStyle(bubble.name).text,
+          })),
+          badge: {
+            position: config.badgePosition,
+            layout: config.badgeLayout,
+            size_percent: config.badgeSize,
+            inset_percent: config.badgeInset,
+          },
+        }, null, 2);
+        await drawAvatar(document.querySelector("#mainAvatar"), config);
+        await drawAvatar(document.querySelector("#rowAvatar"), config);
+        await drawAvatar(document.querySelector("#rowAvatar2"), { ...config, platform: "signal" });
+        await drawAvatar(document.querySelector("#rowAvatar3"), { ...config, platform: "onlyfans" });
+        await renderSampleGallery(config);
+        document.querySelector("#status").textContent = "rendered locally";
+      }
+
+      Object.entries(controls).forEach(([name, control]) => {
+        const rerender = () => {
+          if (name === "clientProfile") applyClientProfile(control.value);
+          render();
+        };
+        control.addEventListener("input", rerender);
+        control.addEventListener("change", rerender);
+      });
+      loadIconManifest().then(() => {
+        applyClientProfile(controls.clientProfile.value);
+        return render();
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-05-31T00:35:27Z",
+  "problem": "Docker container openclaw-chatwoot-local-rails-1 disk 100% full (36.7G/36.7G)",
+  "fix": ["docker volume prune -f (freed 537MB)", "docker rmi postgres:latest alpine:latest (freed ~500MB)"],
+  "result_disk": "99% -> 359MB free",
+  "forwarder_test": {"imported": 0, "ok": true, "scanned": 25, "skipped_existing": 25},
+  "watchdog_log": "2026-05-31 02:34:59 OK: API antwortet in 14ms"
+}

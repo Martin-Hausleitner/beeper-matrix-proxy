@@ -77,6 +77,15 @@ func TestDesktopAPIAdapterListChatsAutoPagesAllChats(t *testing.T) {
 					"title":      "One",
 					"type":       "group",
 					"isArchived": true,
+					"participants": map[string]any{
+						"hasMore": false,
+						"total":   1,
+						"items": []map[string]any{{
+							"id":       "@alice:whatsapp",
+							"fullName": "Alice",
+							"imgURL":   "file:///tmp/alice.png",
+						}},
+					},
 				}},
 				"hasMore":      true,
 				"oldestCursor": "page-2",
@@ -109,6 +118,9 @@ func TestDesktopAPIAdapterListChatsAutoPagesAllChats(t *testing.T) {
 	}
 	if !chats[0].IsArchived {
 		t.Fatalf("expected archived flag to be preserved, got %#v", chats[0])
+	}
+	if len(chats[0].Participants) != 1 || chats[0].Participants[0].AvatarID != "file:///tmp/alice.png" {
+		t.Fatalf("expected participant avatar to be preserved, got %#v", chats[0].Participants)
 	}
 	if strings.Join(gotCursors, ",") != ",page-2" {
 		t.Fatalf("expected cursor pagination, got %v", gotCursors)

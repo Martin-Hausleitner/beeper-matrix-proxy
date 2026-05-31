@@ -1,0 +1,61 @@
+services:
+  nextcloud:
+    image: ${NEXTCLOUD_IMAGE:-nextcloud:apache}
+    container_name: ${NEXTCLOUD_CONTAINER_NAME:-nextcloud}
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST:-nextcloud-redis}
+      REDIS_HOST_PASSWORD: ${REDIS_PASSWORD}
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TRUSTED_DOMAINS}
+      TRUSTED_PROXIES: ${NEXTCLOUD_TRUSTED_PROXIES}
+      PHP_MEMORY_LIMIT: 384M
+      PHP_UPLOAD_LIMIT: 512M
+      APACHE_DISABLE_REWRITE_IP: 1
+    volumes:
+      - nextcloud_html:/var/www/html
+      - ./objectstore.config.php:/var/www/html/config/objectstore.config.php:ro
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:-matrix-traefik}
+      - traefik.http.routers.nextcloud.rule=Host(`${NEXTCLOUD_HOSTNAME}`)
+      - traefik.http.routers.nextcloud.entrypoints=web-secure
+      - traefik.http.routers.nextcloud.tls=true
+      - traefik.http.services.nextcloud.loadbalancer.server.port=80
+      - traefik.http.middlewares.nextcloud-headers.headers.customRequestHeaders.X-Forwarded-Proto=https
+      - traefik.http.routers.nextcloud.middlewares=nextcloud-headers
+    networks:
+      - default
+      - traefik
+    mem_limit: 1536m
+
+  redis:
+    image: redis:7-alpine
+    container_name: nextcloud-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --maxmemory
+      - 192mb
+      - --maxmemory-policy
+      - allkeys-lru
+    networks:
+      - default
+    mem_limit: 256m
+
+volumes:
+  nextcloud_html:
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-matrix-traefik}

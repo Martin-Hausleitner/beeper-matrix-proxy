@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-05-31T00:51:31Z",
+  "feature": "limit-reset-notifier local stack",
+  "local_routine": {"passed": 10, "total": 10, "complete": true, "ts": "2026-05-31T00:49:35Z"},
+  "grafana": {
+    "database": "ok",
+    "version": "13.0.1-0",
+    "commit": "Homebrew"
+},
+  "metrics_9109_ai_series": 1437,
+  "metrics_9111_agent_series": 19,
+  "launchd_jobs": {
+    "limit-reset-notifier": "",
+    "lrn-local-routine": ""
+  },
+  "blocker_vcvm": "vcvm SSH port 1337 unreachable (Tailscale relay active, server offline) — limit-reset-dashboard, limit-reset-tunnel, selfcheck cannot be verified"
+}

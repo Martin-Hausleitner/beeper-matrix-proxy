@@ -4,8 +4,17 @@ config.yaml
 *.db-shm
 *.db-wal
 logs/
+.hermes/
+node_modules/
 *.log
 .env
+voice-ai.env
+config.yaml.backup-*
 sh-vcvm-matrix
 beeper-matrix-proxy
+beeper-source
 perf-results/
+matrix-archive-sync/target/
+matrix-archive/
+contact-avatar-overrides.yaml
+*-contact-avatar-overrides.yaml

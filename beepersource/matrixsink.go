@@ -61,7 +61,7 @@ func NewMatrixClientSink(cfg Config, store *Store, accessToken string) (*MatrixC
 	if cfg.Matrix.InsecureSkipTLS {
 		cli.Client = &http.Client{
 			Timeout:   30 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // Local VCVM self-signed cert opt-in.
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // Local self-signed cert opt-in.
 		}
 	} else {
 		cli.Client = &http.Client{Timeout: 30 * time.Second}
@@ -77,6 +77,9 @@ func (m *MatrixClientSink) EnsurePortal(ctx context.Context, chat Chat, avatar *
 			return "", err
 		}
 		if err := m.updateRoomAvatar(ctx, roomID, avatar); err != nil {
+			return "", err
+		}
+		if err := m.syncDirectMapping(ctx, chat, roomID); err != nil {
 			return "", err
 		}
 		return roomID, nil
@@ -122,7 +125,11 @@ func (m *MatrixClientSink) EnsurePortal(ctx context.Context, chat Chat, avatar *
 	if err := m.store.SetValue(ctx, portalProfileSyncKey(chat.ID), profileValue); err != nil {
 		return "", err
 	}
-	return resp.RoomID.String(), nil
+	roomID := resp.RoomID.String()
+	if err := m.syncDirectMapping(ctx, chat, roomID); err != nil {
+		return "", err
+	}
+	return roomID, nil
 }
 
 func (m *MatrixClientSink) createRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (*mautrix.RespCreateRoom, error) {
@@ -195,18 +202,28 @@ func (m *MatrixClientSink) EnsurePortalSpaces(ctx context.Context, chats []Chat)
 	if len(chats) == 0 {
 		return nil
 	}
-	rootID, err := m.ensureSpace(ctx, "matrix_space:root", "Beeper", "Beeper bridge workspace", platformAvatarMedia(Chat{Network: "Beeper"}))
+	rootID, err := m.ensureSpace(ctx, "matrix_space:root", "All Chats", "Beeper bridge workspace", platformAvatarMedia(Chat{Network: "Beeper"}))
 	if err != nil {
 		return err
 	}
+	eligibleChats := make([]Chat, 0, len(chats))
 	byPlatform := make(map[string][]Chat)
 	for _, chat := range chats {
 		if _, ok, err := m.store.PortalRoomID(ctx, chat.ID); err != nil {
 			return err
 		} else if ok {
+			eligibleChats = append(eligibleChats, chat)
 			platform := PlatformDisplayName(chat)
 			byPlatform[platform] = append(byPlatform[platform], chat)
 		}
+	}
+	switch matrixSpaceGrouping(m.cfg.Matrix.SpaceGrouping) {
+	case "none":
+		return m.linkChatsIntoSpace(ctx, rootID, eligibleChats)
+	case "account":
+		return m.ensureAccountSpaces(ctx, rootID, eligibleChats)
+	case "platform-account":
+		return m.ensurePlatformAccountSpaces(ctx, rootID, byPlatform)
 	}
 	platforms := make([]string, 0, len(byPlatform))
 	for platform := range byPlatform {
@@ -215,7 +232,7 @@ func (m *MatrixClientSink) EnsurePortalSpaces(ctx context.Context, chats []Chat)
 	sort.Strings(platforms)
 	for _, platform := range platforms {
 		platformChats := byPlatform[platform]
-		spaceID, err := m.ensureSpace(ctx, "matrix_space:platform:"+platform, platform, "Beeper "+platform+" chats", platformAvatarMedia(platformChats[0]))
+		spaceID, err := m.ensureSpace(ctx, "matrix_space:platform:"+platform, platform, platform+" chats", platformAvatarMedia(platformChats[0]))
 		if err != nil {
 			return err
 		}
@@ -228,20 +245,105 @@ func (m *MatrixClientSink) EnsurePortalSpaces(ctx context.Context, chats []Chat)
 		sort.Slice(platformChats, func(i, j int) bool {
 			return roomDisplayName(m.cfg, platformChats[i]) < roomDisplayName(m.cfg, platformChats[j])
 		})
-		for _, chat := range platformChats {
-			roomID, ok, err := m.store.PortalRoomID(ctx, chat.ID)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				continue
-			}
-			if err := m.linkSpaceChild(ctx, spaceID, roomID, roomDisplayName(m.cfg, chat), false); err != nil {
-				return err
-			}
-			if err := m.linkSpaceParent(ctx, roomID, spaceID, true); err != nil {
-				return err
-			}
+		if err := m.linkChatsIntoSpace(ctx, spaceID, platformChats); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func matrixSpaceGrouping(raw string) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	switch mode {
+	case "", "platform", "messenger", "service":
+		return "platform"
+	case "platform-account", "platform_account", "team", "hierarchy", "hikiri", "hikiris":
+		return "platform-account"
+	case "account", "login", "channel":
+		return "account"
+	case "none", "flat", "off":
+		return "none"
+	default:
+		return "platform"
+	}
+}
+
+func (m *MatrixClientSink) ensurePlatformAccountSpaces(ctx context.Context, rootID string, byPlatform map[string][]Chat) error {
+	platforms := make([]string, 0, len(byPlatform))
+	for platform := range byPlatform {
+		platforms = append(platforms, platform)
+	}
+	sort.Strings(platforms)
+	for _, platform := range platforms {
+		platformChats := byPlatform[platform]
+		platformSpaceID, err := m.ensureSpace(ctx, "matrix_space:platform:"+platform, platform, platform+" chats", platformAvatarMedia(platformChats[0]))
+		if err != nil {
+			return err
+		}
+		if err := m.linkSpaceChild(ctx, rootID, platformSpaceID, platform, true); err != nil {
+			return err
+		}
+		if err := m.clearSpaceParent(ctx, platformSpaceID, rootID); err != nil {
+			return err
+		}
+		if err := m.ensureAccountSpaces(ctx, platformSpaceID, platformChats); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *MatrixClientSink) ensureAccountSpaces(ctx context.Context, parentID string, chats []Chat) error {
+	byAccount := make(map[string][]Chat)
+	for _, chat := range chats {
+		key := accountSpaceKey(chat)
+		byAccount[key] = append(byAccount[key], chat)
+	}
+	accounts := make([]string, 0, len(byAccount))
+	for account := range byAccount {
+		accounts = append(accounts, account)
+	}
+	sort.Strings(accounts)
+	for _, account := range accounts {
+		accountChats := byAccount[account]
+		spaceName := accountSpaceDisplayName(accountChats[0])
+		spaceID, err := m.ensureSpace(ctx, "matrix_space:account:"+account, spaceName, accountSpaceTopic(accountChats[0]), accountSpaceAvatarMedia(accountChats[0]))
+		if err != nil {
+			return err
+		}
+		if err := m.linkSpaceChild(ctx, parentID, spaceID, spaceName, true); err != nil {
+			return err
+		}
+		if err := m.clearSpaceParent(ctx, spaceID, parentID); err != nil {
+			return err
+		}
+		sort.Slice(accountChats, func(i, j int) bool {
+			return roomDisplayName(m.cfg, accountChats[i]) < roomDisplayName(m.cfg, accountChats[j])
+		})
+		if err := m.linkChatsIntoSpace(ctx, spaceID, accountChats); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *MatrixClientSink) linkChatsIntoSpace(ctx context.Context, spaceID string, chats []Chat) error {
+	sort.Slice(chats, func(i, j int) bool {
+		return roomDisplayName(m.cfg, chats[i]) < roomDisplayName(m.cfg, chats[j])
+	})
+	for _, chat := range chats {
+		roomID, ok, err := m.store.PortalRoomID(ctx, chat.ID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		if err := m.linkSpaceChild(ctx, spaceID, roomID, roomDisplayName(m.cfg, chat), false); err != nil {
+			return err
+		}
+		if err := m.linkSpaceParent(ctx, roomID, spaceID, true); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -372,6 +474,145 @@ func parseMatrixRateLimit(statusCode int, headers http.Header, body []byte) *Mat
 	}
 }
 
+func (m *MatrixClientSink) syncDirectMapping(ctx context.Context, chat Chat, roomID string) error {
+	if chat.IsGroup || strings.TrimSpace(roomID) == "" || strings.TrimSpace(m.cfg.Matrix.UserID) == "" {
+		return nil
+	}
+	target := m.directTargetUserID(chat)
+	if target == "" {
+		return nil
+	}
+	direct, err := m.getDirectAccountData(ctx)
+	if err != nil {
+		return err
+	}
+	changed := removeDirectRoom(direct, roomID)
+	if !stringSliceContains(direct[target], roomID) {
+		direct[target] = append(direct[target], roomID)
+		sort.Strings(direct[target])
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return m.putDirectAccountData(ctx, direct)
+}
+
+func (m *MatrixClientSink) getDirectAccountData(ctx context.Context) (map[string][]string, error) {
+	reqCtx, cancel := m.requestContext(ctx)
+	defer cancel()
+	endpoint := strings.TrimRight(m.cfg.Matrix.HomeserverURL, "/") +
+		"/_matrix/client/v3/user/" + url.PathEscape(m.cfg.Matrix.UserID) + "/account_data/m.direct"
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+m.accessToken)
+	resp, err := m.client.Client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var direct map[string][]string
+		if err := json.NewDecoder(resp.Body).Decode(&direct); err != nil {
+			return nil, err
+		}
+		if direct == nil {
+			direct = map[string][]string{}
+		}
+		return direct, nil
+	case http.StatusNotFound:
+		return map[string][]string{}, nil
+	default:
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if rateErr := parseMatrixRateLimit(resp.StatusCode, resp.Header, body); rateErr != nil {
+			return nil, rateErr
+		}
+		return nil, fmt.Errorf("get m.direct account data failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+}
+
+func (m *MatrixClientSink) putDirectAccountData(ctx context.Context, direct map[string][]string) error {
+	payload, err := json.Marshal(direct)
+	if err != nil {
+		return err
+	}
+	reqCtx, cancel := m.requestContext(ctx)
+	defer cancel()
+	endpoint := strings.TrimRight(m.cfg.Matrix.HomeserverURL, "/") +
+		"/_matrix/client/v3/user/" + url.PathEscape(m.cfg.Matrix.UserID) + "/account_data/m.direct"
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPut, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+m.accessToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := m.client.Client.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if rateErr := parseMatrixRateLimit(resp.StatusCode, resp.Header, body); rateErr != nil {
+			return rateErr
+		}
+		return fmt.Errorf("put m.direct account data failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func (m *MatrixClientSink) directTargetUserID(chat Chat) string {
+	sourceID := directTargetSourceID(chat)
+	if sourceID == "" {
+		return ""
+	}
+	if strings.HasPrefix(sourceID, "@") && strings.Contains(sourceID, ":") {
+		return sourceID
+	}
+	return "@" + MatrixGhostLocalpart(sourceID) + ":" + m.matrixServerName()
+}
+
+func directTargetSourceID(chat Chat) string {
+	for _, participant := range chat.Participants {
+		if id := strings.TrimSpace(participant.ID); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+func removeDirectRoom(direct map[string][]string, roomID string) bool {
+	changed := false
+	for userID, rooms := range direct {
+		next := rooms[:0]
+		for _, existing := range rooms {
+			if existing == roomID {
+				changed = true
+				continue
+			}
+			next = append(next, existing)
+		}
+		if len(next) == 0 {
+			delete(direct, userID)
+		} else {
+			direct[userID] = next
+		}
+	}
+	return changed
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func retryAfterHeader(raw string) time.Duration {
 	value := strings.TrimSpace(raw)
 	if value == "" {
@@ -444,7 +685,7 @@ func (m *MatrixClientSink) requestContext(ctx context.Context) (context.Context,
 }
 
 func (m *MatrixClientSink) uploadAvatar(ctx context.Context, avatar *MatrixMedia) (id.ContentURIString, *event.FileInfo, error) {
-	if avatar == nil || avatar.Content == nil {
+	if avatar == nil {
 		return "", nil, nil
 	}
 	if avatar.AssetID != "" {
@@ -452,12 +693,15 @@ func (m *MatrixClientSink) uploadAvatar(ctx context.Context, avatar *MatrixMedia
 		if err != nil {
 			return "", nil, err
 		}
-		if ok {
+		if ok && avatarCacheReusable(cached, avatar) {
 			return id.ContentURIString(cached.CachedMXC), &event.FileInfo{
 				MimeType: cached.MimeType,
 				Size:     int(cached.SizeBytes),
 			}, nil
 		}
+	}
+	if avatar.Content == nil {
+		return "", nil, nil
 	}
 	upload, err := m.client.UploadMedia(ctx, mautrix.ReqUploadMedia{
 		Content:       avatar.Content,
@@ -477,6 +721,13 @@ func (m *MatrixClientSink) uploadAvatar(ctx context.Context, avatar *MatrixMedia
 	}, nil
 }
 
+func avatarCacheReusable(cached MatrixMedia, avatar *MatrixMedia) bool {
+	if avatar == nil || avatar.ContentHash == "" {
+		return true
+	}
+	return cached.ContentHash == avatar.ContentHash
+}
+
 func (m *MatrixClientSink) EnsurePuppet(ctx context.Context, sender Sender) (string, error) {
 	if sender.ID == "" {
 		return "", nil
@@ -489,14 +740,74 @@ func (m *MatrixClientSink) EnsurePuppet(ctx context.Context, sender Sender) (str
 }
 
 func (m *MatrixClientSink) SendMessage(ctx context.Context, outbound MatrixOutbound) (string, error) {
-	content := event.MessageEventContent{
-		MsgType: event.MessageType(outbound.MsgType),
-		Body:    outbound.Body,
-		BeeperPerMessageProfile: &event.BeeperPerMessageProfile{
-			ID:          outbound.SenderID,
-			Displayname: outbound.SenderName,
-			HasFallback: true,
-		},
+	content, err := m.messageContent(ctx, outbound)
+	if err != nil {
+		return "", err
+	}
+	req := mautrix.ReqSendEvent{TransactionID: outbound.TransactionID}
+	if !outbound.Timestamp.IsZero() {
+		req.Timestamp = outbound.Timestamp.UnixMilli()
+	}
+	resp, err := m.client.SendMessageEvent(ctx, id.RoomID(outbound.RoomID), event.EventMessage, contentPayload(content, outbound), req)
+	if err != nil {
+		return "", err
+	}
+	return resp.EventID.String(), nil
+}
+
+func (m *MatrixClientSink) EditMessage(ctx context.Context, outbound MatrixOutbound, targetEventID string) (string, error) {
+	newContent, err := m.messageContent(ctx, outbound)
+	if err != nil {
+		return "", err
+	}
+	editContent := *newContent
+	editContent.NewContent = newContent
+	editContent.RelatesTo = &event.RelatesTo{
+		Type:    event.RelReplace,
+		EventID: id.EventID(targetEventID),
+	}
+	editContent.Body = "* " + newContent.Body
+	if newContent.FormattedBody != "" {
+		editContent.FormattedBody = "* " + newContent.FormattedBody
+	}
+	req := mautrix.ReqSendEvent{TransactionID: outbound.TransactionID}
+	if !outbound.Timestamp.IsZero() {
+		req.Timestamp = outbound.Timestamp.UnixMilli()
+	}
+	resp, err := m.client.SendMessageEvent(ctx, id.RoomID(outbound.RoomID), event.EventMessage, contentPayload(&editContent, outbound), req)
+	if err != nil {
+		return "", err
+	}
+	return resp.EventID.String(), nil
+}
+
+func (m *MatrixClientSink) RedactMessage(ctx context.Context, roomID string, eventID string, txnID string, reason string) (string, error) {
+	resp, err := m.client.RedactEvent(ctx, id.RoomID(roomID), id.EventID(eventID), mautrix.ReqRedact{
+		Reason: reason,
+		TxnID:  txnID,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.EventID.String(), nil
+}
+
+func (m *MatrixClientSink) messageContent(ctx context.Context, outbound MatrixOutbound) (*event.MessageEventContent, error) {
+	profile := &event.BeeperPerMessageProfile{
+		ID:          outbound.SenderID,
+		Displayname: outbound.SenderName,
+		HasFallback: true,
+	}
+	if outbound.SenderAvatar != nil {
+		avatarURL, _, err := m.uploadAvatar(ctx, outbound.SenderAvatar)
+		if err == nil && avatarURL != "" {
+			profile.AvatarURL = &avatarURL
+		}
+	}
+	content := &event.MessageEventContent{
+		MsgType:                 event.MessageType(outbound.MsgType),
+		Body:                    outbound.Body,
+		BeeperPerMessageProfile: profile,
 	}
 	if outbound.Media != nil {
 		upload, err := m.client.UploadMedia(ctx, mautrix.ReqUploadMedia{
@@ -506,7 +817,7 @@ func (m *MatrixClientSink) SendMessage(ctx context.Context, outbound MatrixOutbo
 			FileName:      outbound.Media.FileName,
 		})
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		content.URL = upload.ContentURI.CUString()
 		content.FileName = outbound.Media.FileName
@@ -537,15 +848,55 @@ func (m *MatrixClientSink) SendMessage(ctx context.Context, outbound MatrixOutbo
 			content.FormattedBody = "<strong>" + html.EscapeString(outbound.SenderName) + "</strong>: " + outbound.HTML
 		}
 	}
-	req := mautrix.ReqSendEvent{TransactionID: outbound.TransactionID}
-	if !outbound.Timestamp.IsZero() {
-		req.Timestamp = outbound.Timestamp.UnixMilli()
-	}
-	resp, err := m.client.SendMessageEvent(ctx, id.RoomID(outbound.RoomID), event.EventMessage, &content, req)
+	return content, nil
+}
+
+func contentPayload(content *event.MessageEventContent, outbound MatrixOutbound) map[string]any {
+	data, err := json.Marshal(content)
 	if err != nil {
-		return "", err
+		return map[string]any{
+			"msgtype": string(content.MsgType),
+			"body":    content.Body,
+		}
 	}
-	return resp.EventID.String(), nil
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return map[string]any{
+			"msgtype": string(content.MsgType),
+			"body":    content.Body,
+		}
+	}
+	source := map[string]any{
+		"message_id": outbound.MessageID,
+		"chat_id":    outbound.ChatID,
+		"account_id": outbound.AccountID,
+	}
+	if outbound.SortKey != "" {
+		source["sort_key"] = outbound.SortKey
+	}
+	if outbound.IsHidden {
+		source["is_hidden"] = outbound.IsHidden
+	}
+	if outbound.IsSender {
+		source["is_sender"] = outbound.IsSender
+	}
+	if outbound.IsUnread {
+		source["is_unread"] = outbound.IsUnread
+	}
+	if len(outbound.Mentions) > 0 {
+		source["mentions"] = outbound.Mentions
+	}
+	if outbound.AttachmentID != "" {
+		source["attachment_id"] = outbound.AttachmentID
+	}
+	if outbound.AttachmentIdx > 0 {
+		source["attachment_index"] = outbound.AttachmentIdx
+	}
+	payload["com.openclaw.beeper.source"] = source
+	if outbound.VoiceAI != nil {
+		payload["com.openclaw.voice_ai"] = outbound.VoiceAI
+	}
+	return payload
 }
 
 func roomDisplayName(cfg Config, chat Chat) string {

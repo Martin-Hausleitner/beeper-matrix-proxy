@@ -9,14 +9,79 @@ public `main` branch.
 
 ### Added
 
+- Local Beeper Desktop `bridgev2` sidebar icon helper:
+  `scripts/patch_beeper_desktop_bridgev2_icon.cjs` can embed any local image
+  into the native Beeper renderer's generic bridge slot, map self-hosted
+  `bridgev2` accounts to that slot, verify/restore the patch, and preview the
+  crop through `infra/beeper-desktop-icon-testbench/index.html`.
+- Matrix avatar client profiles now distinguish Cinny's near-corner badge
+  placement from Element's circle-safe placement, group fallback avatars use a
+  neutral light-gray gradient behind the participant bubbles, and the portable
+  avatar sync docs describe the SQLite mapping database plus `media_cache`.
+- Portal rooms without a source photo now have an explicit regression test for
+  generated initials avatars with the messenger badge, instead of falling back
+  to a generic person/default picture.
+- `matrix-archive-sync`, a standalone Rust CLI that archives standard Matrix
+  rooms into SQLite with zstd-compressed raw events, FTS5 search fields, a
+  SHA-256 content-addressed media store, static HTML/JSONL exports, and
+  restic-friendly snapshot manifests.
+- `infra/winner-stack`, a production blueprint for the selected 8 GB RAM /
+  256 GB local deployment: Synapse via matrix-docker-ansible-deploy or
+  Etke-compatible Ansible, Element Web, Cinny, minimal Nextcloud Docker Compose,
+  PostgreSQL, Redis, S3 primary storage for Matrix media and Nextcloud files,
+  plus restic backup/restore-check scripts.
+- `cmd/beeper-source -backfill-history`, a safe read-only Beeper Desktop API
+  history crawler that paginates older messages with Beeper's `oldestCursor`
+  and mirrors them into existing Matrix portal rooms before archive sync.
+- Beeper/BIPA history mirroring now stores raw Desktop API message JSON locally
+  and mirrors every attachment in a multi-attachment message as its own Matrix
+  media event instead of only preserving the first file.
+- `matrix-archive-sync sync --refresh-room-state` now refreshes joined-room
+  state through `/joined_rooms` and `/rooms/{roomId}/state`, so names, service
+  spaces, and `m.room.avatar` state are persisted even when incremental `/sync`
+  does not include historical state.
+- Beeper-side edits are now mirrored to Matrix as `m.replace` events, and
+  Beeper-side deletes redact the original Matrix event instead of only updating
+  the local mapping version.
+- Matrix archive redaction ingest now marks the target event redacted and
+  removes its old body from FTS/HTML rendering while preserving raw event blobs.
+- Matrix archive snapshots now write the canonical restic input database as
+  `snapshot/archive.sqlite` and remove stale legacy snapshot files before
+  generating the media manifest.
+- Matrix archive export now extracts Beeper per-message profile avatar MXC
+  URLs, can repair existing archives with `repair-media --download-media`, and
+  renders sender avatar images in the offline HTML timeline.
+- Matrix message events emitted by `beeper-source` include
+  `com.openclaw.beeper.source` metadata with source chat/message/account and
+  attachment identifiers; the full raw Beeper sidecar DB is included in the
+  archive snapshot for lossless local backup.
+- `BEEPER_MATRIX_PROXY_MATRIX_FORCE_AVATAR_SYNC=true` forces a one-shot room
+  avatar state rewrite for existing Beeper portal rooms; avatar fetch failures
+  fall back to generated platform logos instead of aborting portal reconcile.
 - `cmd/beeper-source`, an executable reconcile loop that reads Beeper Desktop
   API chats and mirrors them into Matrix rooms.
 - Matrix client sink for `beeper-source` with room creation, deterministic
   transaction IDs, optional invite target, sender-prefix fallback, and Beeper
   per-message profile metadata.
+- Beeper -> Matrix media edit uploads now fall back to readable Matrix notices
+  on oversized upload failures instead of blocking history backfill, and sender
+  profile avatar upload failures no longer prevent the message itself from
+  being mirrored.
 - Beeper chat avatar mirroring into Matrix portal room icons, including local
   Beeper media paths, `file://` paths, remote asset downloads, and refreshes for
   already-created rooms.
+- `BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES=true` composes a messenger
+  badge into real Beeper/BIPA chat or participant avatars, so Cinny and Element
+  can show both the person/profile picture and the service marker through the
+  standard Matrix `m.room.avatar` field.
+- Avatar badges now use embedded local brand-icon PNG assets, a larger
+  app-style badge treatment, and `avatar-badge-v2` cache keys. Rooms without a
+  real chat/person photo now get a generated initials avatar plus the
+  service badge instead of a logo-only room avatar.
+- `BEEPER_MATRIX_PROXY_CONTACT_AVATAR_OVERRIDES` can point at a private local
+  YAML file for manually approved contact-photo overrides. These overrides win
+  before Beeper/BIPA participant or chat avatars and are intentionally ignored by
+  Git.
 - `cmd/beeper-source -rooms-only` to create/update Matrix rooms for all Beeper
   chats without importing message history or enabling Matrix -> Beeper sends.
 - Paginated Beeper chat discovery via `/v1/chats`, so all chats are considered
@@ -42,6 +107,9 @@ public `main` branch.
   Matrix -> Beeper sends regardless of the surrounding environment. It also
   enables Matrix Spaces for the all-chat Cinny import while keeping real
   Beeper/BIPA chat avatars preferred over platform-logo room avatars.
+- Rooms-only and Beeper-history backfills now exclude Matrix bridge/source
+  accounts (`sh-vcvm-matrix`, `matrix`, and `beeper-matrix-proxy`) by default
+  so local backup/portal rooms do not reappear as duplicate Beeper chats.
 - `BEEPER_MATRIX_PROXY_MATRIX_ROOM_INCLUDE_PLATFORM` controls whether portal
   room names include bracketed service names such as `[Telegram]`; rooms-only
   mode disables the bracket and clears the default `Beeper: ` prefix because
@@ -50,6 +118,17 @@ public `main` branch.
 - Relative Beeper/BIPA avatar asset URLs are resolved against
   `BEEPER_MATRIX_PROXY_BEEPER_BASE_URL` before download, so rooms can use the
   full chat/person profile picture when Beeper exposes one.
+- Direct Beeper/BIPA portal rooms now use participant profile pictures as the
+  Matrix room avatar when the chat itself has no `imgURL`; set
+  `BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS=false` to keep service-logo
+  fallbacks for those rooms.
+- Direct Beeper/BIPA portal rooms are also reconciled into Matrix `m.direct`
+  account data, so Matrix clients such as Cinny can classify 1:1 rooms as
+  personal chats instead of generic private rooms.
+- Beeper/BIPA avatar refreshes now store content hashes and bypass stale Matrix
+  media-cache entries when the avatar bytes change behind the same Beeper asset
+  URL; the local hourly archive script enables forced avatar freshness by
+  default while still reusing unchanged hashes.
 - Rooms-only imports now refresh existing portal room names, topics, and
   avatars instead of only creating missing portals; this keeps idempotent
   re-runs useful after config changes.
@@ -105,11 +184,10 @@ public `main` branch.
 - Unit tests for the new Beeper-source config, SDK adapter, store, mapping,
   pipeline, WebSocket subscription command, media policy, and safety behavior.
 - README performance snapshot with measured hot-path improvements.
-- README live VCVM all-chat evidence: 700 discovered Beeper chats, 694 active,
-  6 archived, 701 Matrix portal rows, 0 missing active chats, 701/701 portal
-  rooms joined by `@cinny_beeper_test:100.120.120.120`, and a saved Cinny
-  screenshot at `/tmp/beeper-source-cinny-all-chats-final.png`.
-- README live Matrix Spaces evidence: 5 service spaces under the Beeper root,
+- README live all-chat evidence now documents the verification shape without
+  committing local room counts, Matrix IDs, Tailnet hostnames, or screenshot
+  paths that can identify a private deployment.
+- README live Matrix Spaces evidence: service spaces under the Beeper root,
   6/6 spaces joined by the Cinny test user, and PNG avatar state verified for
   all service spaces.
 - README link to this changelog.
@@ -169,15 +247,15 @@ public `main` branch.
 ### Changed
 
 - Removed the GitHub Actions workflow and README CI badge so validation stays
-  local-only in the VCVM, as requested.
+  local-only against the configured Matrix test stack, as requested.
 
 ### Verified
 
 - Live Matrix/Cinny -> Beeper Signal test group E2E for text, image, edit,
   reaction, and delete.
 - Live Matrix/Cinny -> Beeper WhatsApp test group E2E for text and image.
-- Browser-verified Cinny v4.11.1 room list with the Beeper BotE2E Signal,
-  WhatsApp, and sh-vcvm Matrix rooms visible.
+- Browser-verified Cinny room list with dedicated Signal, WhatsApp, and Matrix
+  test rooms visible; exact room names and screenshots stay in private evidence.
 - Live WhatsApp test group avatar E2E: Beeper local avatar media was uploaded to
   Matrix as `m.room.avatar` and Cinny showed the room avatar state change.
 - Live Signal reply E2E in both directions: Matrix reply mapped to Beeper
@@ -185,10 +263,10 @@ public `main` branch.
 - Live Signal and WhatsApp media E2E in both directions for file, GIF, and
   audio; Cinny rendered the Matrix rooms with file controls, GIF previews, and
   audio playback controls.
-- Live VCVM all-chat rooms-only import measured 700 Beeper chats via paginated
-  `/v1/chats` (694 active, 6 archived). The safe import runs with Matrix ->
-  Beeper disabled, Matrix Spaces, PNG platform avatars, and resumable portal
-  creation because Synapse room creation rate-limits still apply.
+- Live all-chat rooms-only import uses paginated `/v1/chats`. The safe import
+  runs with Matrix -> Beeper disabled, Matrix Spaces, PNG platform avatars, and
+  resumable portal creation because Synapse room creation rate-limits still
+  apply.
 
 ## 2026-05-20
 
