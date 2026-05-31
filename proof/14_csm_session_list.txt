@@ -1,0 +1,20 @@
+#    LOCATION  AGENT     LAST       PROJECT                 TITLE                           ID      
+----------------------------------------------------------------------------------------------------
+1    local     claude    33s ago    mh                      lösche beeper komplett alles    91659e17
+2    local     claude    49s ago    mh                      cmux Hol dir die SSH-Connecti…  53323392
+3    local     claude    2m ago     mh                      /Users/mh/Downloads/agent-sta…  915d2e00
+4    local     claude    4m ago     Playground              Wir arbeiten an Cognitor weit…  2c9153e0
+5    local     claude    6m ago     limit-reset-notifier    Aufgabe fuers Grafana-Dashboa…  a58be0f9
+6    local     claude    7m ago     mh                      https://github.com/tinyhumans…  281b762c
+7    local     claude    36m ago    mh                      beWenn ich bei Cmux einen neu…  af1ac116
+8    local     claude    1h ago     mh                      Ich nutze den Notebook L1 und…  7b4580bf
+9    local     claude    1h ago     mh                      https://github.com/Martin-Hau…  c93ee153
+10   local     claude    2h ago     mh                      lade vibecode vm ein 'https:/…  2776475a
+11   local     claude    2h ago     mh                      A session-scoped Stop hook is…  8b7d1b09
+12   local     claude    3h ago     mh                      Teste es bitte end-to-end und…  67632e03
+13   local     claude    3h ago     mh                      Starte bitte die letzten Sess…  b4978aea
+14   local     codex     4h ago     mh                      # AGENTS.md instructions for …  019e7a77
+15   local     claude    4h ago     mh                      Den Skill Notebook LLM mal nu…  308fcb43
+16   local     claude    4h ago     mh                      schau Schau mal rum, die VCVM…  b901ae84
+17   local     claude    4h ago     AquaVoice_Export        Initialize workspace ## Task:…  234113f5
+18   local     claude    4h ago     mh                      installire lokal https://gith…  38771950

@@ -56,3 +56,20 @@ E2E: WA pendingMessageID `~beeper-mautrix-go_..._24`, Signal `~beeper-mautrix-go
 - Fix: `docker volume prune -f` (537MB) + `docker rmi postgres:latest alpine:latest` (~500MB)  
 - Result: 359MB free, forwarder returns `{"ok":true}` again  
 - Runs every 2 min via `ai.openclaw.beeper-chatwoot-forwarder` LaunchAgent
+
+### 8. Limit Reset Notifier — Local Stack E2E
+**File:** `13_lrn_local_stack_e2e.json`, `16_lrn_kpi_fresh.json`  
+- local-routine: 10/10 ✅ (00:49Z)  
+- Grafana :3300 `ok`, 1437 AI series (:9109), 19 agent series (:9111)  
+- `collect.mjs` ran: 1320 KPI-Serien, 31 Tage, Claude+Codex  
+- **BLOCKER vcvm:** `limit-reset-dashboard`, `limit-reset-tunnel`, `selfcheck` require SSH to vcvm (port 1337 timeout). See `15_blockers.md`.
+
+### 9. Session Manager (csm) — E2E Verified
+**File:** `14_csm_session_list.txt`  
+`csm list` returns 18 local sessions with project, title, agent, recency. ✅
+
+### 10. Blockers Documented
+**File:** `15_blockers.md`  
+- vcvm offline → Paperclip, LRN vcvm services, selfcheck blocked  
+- IG Automation → first phone login required  
+- Door Presence Bridge → Nuki app pairing required

@@ -1,0 +1,121 @@
+{
+  "generatedAt": "2026-05-31T00:51:31.588Z",
+  "host": "MHs-MacBook-Pro.local",
+  "tier": null,
+  "dataCapturedAt": "2026-05-31T00:46:56Z",
+  "providers": [
+    {
+      "id": "claude",
+      "label": "Claude Code",
+      "windows": [
+        {
+          "name": "session",
+          "windowMinutes": 300,
+          "expired": false,
+          "unknownReset": true,
+          "kind": "short",
+          "label": "Session-Limit (5h)",
+          "usedPercent": 51,
+          "remainingPercent": 49,
+          "capturedAt": "2026-05-31T00:46:56Z",
+          "resetsAt": null,
+          "resetsInSeconds": null,
+          "burnPerHour": 0,
+          "exhaustionAt": null,
+          "exhaustsBeforeReset": false
+        },
+        {
+          "name": "opus",
+          "windowMinutes": 10080,
+          "expired": false,
+          "unknownReset": false,
+          "kind": "long",
+          "label": "Opus-Wochenlimit",
+          "usedPercent": 15,
+          "remainingPercent": 85,
+          "capturedAt": "2026-05-31T00:46:56Z",
+          "resetsAt": "2026-06-01T04:00:00Z",
+          "resetsInSeconds": 97708,
+          "burnPerHour": 0.3,
+          "exhaustionAt": "2026-06-10T06:54:36Z",
+          "exhaustsBeforeReset": false
+        },
+        {
+          "name": "weekly",
+          "windowMinutes": 10080,
+          "expired": false,
+          "unknownReset": false,
+          "kind": "long",
+          "label": "Wochenlimit",
+          "usedPercent": 70,
+          "remainingPercent": 30,
+          "capturedAt": "2026-05-31T00:46:56Z",
+          "resetsAt": "2026-06-01T04:00:00Z",
+          "resetsInSeconds": 97708,
+          "burnPerHour": 4.3,
+          "exhaustionAt": "2026-05-31T07:48:21Z",
+          "exhaustsBeforeReset": true
+        }
+      ],
+      "lastCapturedAt": "2026-05-31T00:46:56Z",
+      "headline": {
+        "usedPercent": 70,
+        "remainingPercent": 30,
+        "nextResetAt": "2026-06-01T04:00:00Z",
+        "nextResetInSeconds": 97708
+      }
+    },
+    {
+      "id": "codex",
+      "label": "Codex (gpt-5.5)",
+      "windows": [
+        {
+          "name": "session",
+          "windowMinutes": 300,
+          "expired": false,
+          "unknownReset": false,
+          "kind": "short",
+          "label": "Session-Limit (5h)",
+          "usedPercent": 59,
+          "remainingPercent": 41,
+          "capturedAt": "2026-05-31T00:46:41Z",
+          "resetsAt": "2026-05-31T04:13:07Z",
+          "resetsInSeconds": 12095,
+          "burnPerHour": 33.8,
+          "exhaustionAt": "2026-05-31T02:04:15Z",
+          "exhaustsBeforeReset": true
+        },
+        {
+          "name": "weekly",
+          "windowMinutes": 10080,
+          "expired": false,
+          "unknownReset": false,
+          "kind": "long",
+          "label": "Wochenlimit",
+          "usedPercent": 22,
+          "remainingPercent": 78,
+          "capturedAt": "2026-05-31T00:46:41Z",
+          "resetsAt": "2026-06-06T22:12:17Z",
+          "resetsInSeconds": 595245,
+          "burnPerHour": 8.6,
+          "exhaustionAt": "2026-05-31T09:56:33Z",
+          "exhaustsBeforeReset": true
+        }
+      ],
+      "lastCapturedAt": "2026-05-31T00:46:41Z",
+      "headline": {
+        "usedPercent": 59,
+        "remainingPercent": 41,
+        "nextResetAt": "2026-05-31T04:13:07Z",
+        "nextResetInSeconds": 12095
+      }
+    }
+  ],
+  "consumption": {
+    "today": {
+      "codexTokensApprox": 0,
+      "claudeTokensApprox": 79788296,
+      "claudeCostUsdApprox": 62.76
+    }
+  }
+}
