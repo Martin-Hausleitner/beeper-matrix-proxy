@@ -43,3 +43,16 @@ PUT requests to `matrix.beeper.com/_hungryserv/martinhltr`), overloading the sha
 account homeserver and causing Signal/WhatsApp to drop or time out.
 
 Fix: Bridge permanently deleted server-side. Cannot respawn.
+
+### 6. Direct Beeper API Sender (beeper-send.sh)
+**File:** `10_direct_api_sender_e2e.json`, `12_beeper_send_direct_api.sh`  
+Root cause of variable 5–30s latency: `npx @beeper/mcp-remote` waits for cloud ACK.  
+Fix: `POST http://127.0.0.1:23373/v1/chats/{chatID}/messages` directly — ~0.5s total for WA+Signal.  
+E2E: WA pendingMessageID `~beeper-mautrix-go_..._24`, Signal `~beeper-mautrix-go_..._25` confirmed.
+
+### 7. Docker Disk Full → chatwoot-forwarder Fixed
+**File:** `11_chatwoot_forwarder_docker_fix.json`  
+- `openclaw-chatwoot-local-rails-1` container overlay disk was 100% full (36.7G/36.7G)  
+- Fix: `docker volume prune -f` (537MB) + `docker rmi postgres:latest alpine:latest` (~500MB)  
+- Result: 359MB free, forwarder returns `{"ok":true}` again  
+- Runs every 2 min via `ai.openclaw.beeper-chatwoot-forwarder` LaunchAgent

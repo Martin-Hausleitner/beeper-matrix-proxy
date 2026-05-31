@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-05-31T00:35:27Z",
+  "method": "POST /v1/chats/{chatID}/messages (direct, no npx/MCP)",
+  "whatsapp_chatID": "91745",
+  "signal_chatID": "120600",
+  "wa_result": {"chatID":"!obm0gpZQvhU619bdkYDQ:beeper.local","pendingMessageID":"~beeper-mautrix-go_1780187726454968000_24"},
+  "signal_result": {"chatID":"!v3p7CvBdPbzyQGKXswFv:beeper.local","pendingMessageID":"~beeper-mautrix-go_1780187726928671000_25"},
+  "latency_note": "~0.5s total for both vs 5-30s via npx/mcp-remote"
+}
