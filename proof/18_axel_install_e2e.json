@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-05-31T00:52:51Z",
+  "feature": "Axel download accelerator",
+  "cli_version": "axel 0.8.0",
+  "cli_path": "/Users/mh/.local/bin/axel",
+  "app_path": "/Applications/Axel.app",
+  "app_exists": /Applications/Axel.app
+true,
+  "cli_e2e": "axel 0.8.0",
+  "status": "CLI v0.8.0 + macOS app v0.2.0 ✅"
+}

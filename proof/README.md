@@ -73,3 +73,18 @@ E2E: WA pendingMessageID `~beeper-mautrix-go_..._24`, Signal `~beeper-mautrix-go
 - vcvm offline → Paperclip, LRN vcvm services, selfcheck blocked  
 - IG Automation → first phone login required  
 - Door Presence Bridge → Nuki app pairing required
+
+### 11. BetterVencordPatch Auto-Patcher
+**File:** `17_bettervencordpatch_e2e.json`  
+- `org.aaron.autovencordpatch` LaunchAgent: PID 58926, last_exit=0 ✅  
+- `org.openclaw.ensure-vencord-discord`: loaded, last_exit=0 ✅  
+- `/Applications/VencordInstaller.app` present ✅
+
+### 12. Axel Download Accelerator
+**File:** `18_axel_install_e2e.json`  
+- CLI `~/.local/bin/axel` v0.8.0 ✅ (built from source with libghostty shim)  
+- macOS app `/Applications/Axel.app` v0.2.0 ✅
+
+### 13. OpenClaw Workspace Synced
+- 6 files updated (skills + memory + AGENTS.md)  
+- Pushed to `Martin-Hausleitner/openclaw-workspace` master ✅
