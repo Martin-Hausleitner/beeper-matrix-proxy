@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
 	"github.com/Martin-Hausleitner/beeper-matrix-proxy/connector"
@@ -12,7 +15,14 @@ var (
 	BuildTime = "unknown"
 )
 
+const legacyAppserviceEnableEnv = "BEEPER_LEGACY_APPSERVICE_ENABLE"
+
 func main() {
+	if !legacyAppserviceEnabled() {
+		fmt.Fprintf(os.Stderr, "Legacy BIPA/bridgev2 startup is disabled. Set %s=1 only for an intentional legacy bridge run.\n", legacyAppserviceEnableEnv)
+		os.Exit(64)
+	}
+
 	connector := &connector.MyConnector{}
 
 	m := mxmain.BridgeMain{
@@ -28,4 +38,8 @@ func main() {
 
 	m.InitVersion(Tag, Commit, BuildTime)
 	m.Run()
+}
+
+func legacyAppserviceEnabled() bool {
+	return os.Getenv(legacyAppserviceEnableEnv) == "1"
 }

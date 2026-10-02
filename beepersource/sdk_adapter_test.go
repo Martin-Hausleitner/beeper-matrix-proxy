@@ -63,6 +63,45 @@ func TestDesktopAPIAdapterListChatsUsesConfiguredChatIDs(t *testing.T) {
 	}
 }
 
+func TestDesktopAPIAdapterListChatsSkipsMissingConfiguredChatIDs(t *testing.T) {
+	var gotPaths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		if strings.Contains(r.URL.Path, "missing") {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code":    "NOT_FOUND",
+				"message": "Chat not found",
+			})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":        strings.TrimPrefix(r.URL.Path, "/v1/chats/"),
+			"accountID": "whatsapp",
+			"title":     "Test",
+			"type":      "group",
+		})
+	}))
+	defer server.Close()
+
+	adapter := NewDesktopAPIAdapter(Config{Beeper: BeeperConfig{
+		BaseURL: server.URL,
+		ChatIDs: []string{"!missing:beeper", "!whatsapp:beeper"},
+	}}, "test-token")
+	chats, err := adapter.ListChats(context.Background())
+
+	if err != nil {
+		t.Fatalf("ListChats returned error: %v", err)
+	}
+	if len(chats) != 1 || chats[0].ID != "!whatsapp:beeper" {
+		t.Fatalf("expected only existing chat, got %#v", chats)
+	}
+	if strings.Join(gotPaths, ",") != "/v1/chats/!missing:beeper,/v1/chats/!whatsapp:beeper" {
+		t.Fatalf("unexpected paths %v", gotPaths)
+	}
+}
+
 func TestDesktopAPIAdapterListChatsAutoPagesAllChats(t *testing.T) {
 	var gotCursors []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

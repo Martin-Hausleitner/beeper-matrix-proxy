@@ -771,13 +771,21 @@ func senderForMessage(chat Chat, msg Message) Sender {
 	return sender
 }
 
-func (s *Service) senderAvatarMedia(ctx context.Context, sender Sender) (*MatrixMedia, error) {
+func (s *Service) senderAvatarMedia(ctx context.Context, chat Chat, sender Sender) (*MatrixMedia, error) {
 	if avatar, ok, err := s.contactOverrideAvatarForSender(sender); ok || err != nil {
 		return avatar, err
 	}
+	fallback := func() *MatrixMedia {
+		return generatedContactAvatarMediaWithOptions(Chat{
+			ID:        firstNonEmpty(sender.ID, chat.ID),
+			AccountID: chat.AccountID,
+			Network:   chat.Network,
+			Name:      firstNonEmpty(sender.DisplayName, sender.ID, chat.Name),
+		}, s.avatarBadgeOptions())
+	}
 	avatarURL := s.resolveBeeperAssetURL(sender.AvatarID)
 	if avatarURL == "" {
-		return nil, nil
+		return fallback(), nil
 	}
 	if cached, ok, err := s.store.MediaByAssetID(ctx, avatarURL); err != nil {
 		return nil, err
@@ -799,7 +807,7 @@ func (s *Service) senderAvatarMedia(ctx context.Context, sender Sender) (*Matrix
 	}
 	asset, err := s.api.DownloadAsset(ctx, avatarURL)
 	if err != nil {
-		return nil, err
+		return fallback(), nil
 	}
 	fileName := firstNonEmpty(asset.FileName, "beeper-sender-avatar")
 	mimeType := firstNonEmpty(asset.MimeType, mime.TypeByExtension(filepath.Ext(fileName)), "application/octet-stream")
@@ -850,8 +858,10 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, m
 			return s.redactAdditionalAttachments(ctx, roomID, msg, version)
 		}
 		edit := s.matrixOutboundForMessage(roomID, msg, sender, version)
-		if avatar, err := s.senderAvatarMedia(ctx, sender); err == nil && avatar != nil {
-			defer avatar.Close()
+		if avatar, err := s.senderAvatarMedia(ctx, chat, sender); err == nil && avatar != nil {
+			if avatar.Close != nil {
+				defer avatar.Close()
+			}
 			edit.SenderAvatar = avatar
 		}
 		edit.TransactionID = DeterministicTxnID(msg.ChatID, msg.ID, MutationEdit, version)
@@ -915,8 +925,10 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, m
 	}
 	outbound := s.matrixOutboundForMessage(roomID, msg, sender, version)
 	outbound.SenderMXID = senderMXID
-	if avatar, err := s.senderAvatarMedia(ctx, sender); err == nil && avatar != nil {
-		defer avatar.Close()
+	if avatar, err := s.senderAvatarMedia(ctx, chat, sender); err == nil && avatar != nil {
+		if avatar.Close != nil {
+			defer avatar.Close()
+		}
 		outbound.SenderAvatar = avatar
 	}
 	if msg.LinkedMessageID != "" {
@@ -1024,8 +1036,10 @@ func (s *Service) mirrorAdditionalAttachments(ctx context.Context, roomID string
 			AttachmentID:  att.ID,
 			AttachmentIdx: index,
 		}
-		if avatar, err := s.senderAvatarMedia(ctx, sender); err == nil && avatar != nil {
-			defer avatar.Close()
+		if avatar, err := s.senderAvatarMedia(ctx, chat, sender); err == nil && avatar != nil {
+			if avatar.Close != nil {
+				defer avatar.Close()
+			}
 			outbound.SenderAvatar = avatar
 		}
 		if media, err := s.matrixMediaForAttachment(ctx, att); err != nil {
@@ -1161,8 +1175,24 @@ func (s *Service) matrixToBeeperDisabled() bool {
 	return s.cfg.Safety.DisableMatrixToBeeper || s.cfg.Sync.Mode == SyncModeReadOnly
 }
 
+func (s *Service) matrixToBeeperChatAllowed(chatID string) bool {
+	if len(s.cfg.Beeper.ChatIDs) == 0 {
+		return false
+	}
+	for _, allowed := range s.cfg.Beeper.ChatIDs {
+		if strings.TrimSpace(allowed) == chatID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) matrixToBeeperBlocked(chatID string) bool {
+	return s.matrixToBeeperDisabled() || !s.matrixToBeeperChatAllowed(chatID)
+}
+
 func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound) error {
-	if s.matrixToBeeperDisabled() {
+	if s.matrixToBeeperBlocked(inbound.ChatID) {
 		return ErrMatrixToBeeperDisabled
 	}
 	pendingVoiceAI, err := s.prepareMatrixInboundVoiceAI(ctx, &inbound)
@@ -1218,7 +1248,7 @@ func (s *Service) HandleMatrixMessage(ctx context.Context, inbound MatrixInbound
 }
 
 func (s *Service) HandleMatrixEdit(ctx context.Context, chatID, matrixTargetEventID, text string) error {
-	if s.matrixToBeeperDisabled() {
+	if s.matrixToBeeperBlocked(chatID) {
 		return ErrMatrixToBeeperDisabled
 	}
 	mapping, ok, err := s.store.MessageByMatrixEventID(ctx, matrixTargetEventID)
@@ -1232,7 +1262,7 @@ func (s *Service) HandleMatrixEdit(ctx context.Context, chatID, matrixTargetEven
 }
 
 func (s *Service) HandleMatrixRedaction(ctx context.Context, chatID, matrixTargetEventID string) error {
-	if s.matrixToBeeperDisabled() {
+	if s.matrixToBeeperBlocked(chatID) {
 		return ErrMatrixToBeeperDisabled
 	}
 	reaction, ok, err := s.store.ReactionByMatrixEventID(ctx, matrixTargetEventID)
@@ -1256,7 +1286,7 @@ func (s *Service) HandleMatrixRedaction(ctx context.Context, chatID, matrixTarge
 }
 
 func (s *Service) HandleMatrixReaction(ctx context.Context, chatID, matrixEventID, matrixTargetEventID, reactionKey string) error {
-	if s.matrixToBeeperDisabled() {
+	if s.matrixToBeeperBlocked(chatID) {
 		return ErrMatrixToBeeperDisabled
 	}
 	mapping, ok, err := s.store.MessageByMatrixEventID(ctx, matrixTargetEventID)

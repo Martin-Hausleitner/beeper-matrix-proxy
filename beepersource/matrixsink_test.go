@@ -203,6 +203,62 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 	}
 }
 
+func TestMatrixClientSinkNativeGhostSenderUsesAppserviceUserID(t *testing.T) {
+	var sentUserID string
+	var sentBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || !strings.Contains(r.URL.Path, "/send/m.room.message/") {
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+		sentUserID = r.URL.Query().Get("user_id")
+		var body struct {
+			Body string `json:"body"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode send body: %v", err)
+		}
+		sentBody = body.Body
+		_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$ghost-event:local"})
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	cfg.Matrix.NativeGhostSenders = true
+	cfg.Matrix.PrefixSender = true
+	sink, err := NewMatrixClientSink(cfg, store, "appservice-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eventID, err := sink.SendMessage(ctx, MatrixOutbound{
+		RoomID:        "!room:local",
+		MessageID:     "$m1",
+		SenderID:      "@alice:whatsapp",
+		SenderName:    "Alice",
+		SenderMXID:    "@beeper_ghost_alice:local",
+		Body:          "hello",
+		MsgType:       "m.text",
+		TransactionID: "txn1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eventID != "$ghost-event:local" {
+		t.Fatalf("unexpected event ID %q", eventID)
+	}
+	if sentUserID != "@beeper_ghost_alice:local" {
+		t.Fatalf("expected ghost user_id query, got %q", sentUserID)
+	}
+	if sentBody != "hello" {
+		t.Fatalf("native ghost sender should not prefix body, got %q", sentBody)
+	}
+}
+
 func TestMatrixClientSinkMarksDirectPortalInAccountData(t *testing.T) {
 	var createIsDirect bool
 	var directPayload map[string][]string

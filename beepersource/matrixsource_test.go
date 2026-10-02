@@ -16,8 +16,10 @@ func TestMatrixSyncForwardsCinnyMessageToBeeper(t *testing.T) {
 	if err := store.UpsertPortal(ctx, chat, "!room:local", "beeper-cursor"); err != nil {
 		t.Fatal(err)
 	}
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!chat:beeper"}
 	api := &fakeBeeperAPI{}
-	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/_matrix/client/v3/sync" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
@@ -45,7 +47,6 @@ func TestMatrixSyncForwardsCinnyMessageToBeeper(t *testing.T) {
 		}`))
 	}))
 	defer server.Close()
-	cfg := DefaultConfig()
 	cfg.Matrix.HomeserverURL = server.URL
 	cfg.Matrix.UserID = "@bridge:local"
 	cfg.Matrix.InsecureSkipTLS = true
@@ -72,6 +73,56 @@ func TestMatrixSyncForwardsCinnyMessageToBeeper(t *testing.T) {
 	}
 }
 
+func TestMatrixSyncSkipsPortalOutsideConfiguredChatAllowlist(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	if err := store.UpsertPortal(ctx, Chat{ID: "!old-chat:beeper", AccountID: "signal", Name: "Old"}, "!old-room:local", ""); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeBeeperAPI{}
+	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_matrix/client/v3/sync" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"next_batch": "sync-allowlist",
+			"rooms": {"join": {"!old-room:local": {"timeline": {"events": [{
+				"type": "m.room.message",
+				"event_id": "$old:local",
+				"sender": "@cinny:local",
+				"content": {"msgtype": "m.text", "body": "should not leave Matrix"}
+			}]}}}}
+		}`))
+	}))
+	defer server.Close()
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!current-chat:beeper"}
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@bridge:local"
+	cfg.Matrix.InsecureSkipTLS = true
+	source := NewMatrixClientSource(cfg, store, "matrix-token")
+	handled, err := source.SyncOnce(ctx, svc)
+	if err != nil {
+		t.Fatalf("SyncOnce returned error: %v", err)
+	}
+	if handled != 0 {
+		t.Fatalf("expected stale portal to be skipped, got %d handled events", handled)
+	}
+	if len(api.sent) != 0 {
+		t.Fatalf("expected no Beeper send outside chat allowlist, got %#v", api.sent)
+	}
+	token, err := store.GetValue(ctx, "matrix_sync_since")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "sync-allowlist" {
+		t.Fatalf("expected sync token to advance after skipped stale portal, got %q", token)
+	}
+}
+
 func TestMatrixSyncIgnoresVoiceAIGeneratedReplies(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
@@ -80,8 +131,10 @@ func TestMatrixSyncIgnoresVoiceAIGeneratedReplies(t *testing.T) {
 	if err := store.UpsertPortal(ctx, chat, "!room:local", "beeper-cursor"); err != nil {
 		t.Fatal(err)
 	}
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{chat.ID}
 	api := &fakeBeeperAPI{}
-	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/_matrix/client/v3/sync" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
@@ -115,7 +168,6 @@ func TestMatrixSyncIgnoresVoiceAIGeneratedReplies(t *testing.T) {
 		}`))
 	}))
 	defer server.Close()
-	cfg := DefaultConfig()
 	cfg.Matrix.HomeserverURL = server.URL
 	cfg.Matrix.UserID = "@bridge:local"
 	cfg.Matrix.InsecureSkipTLS = true
@@ -140,7 +192,9 @@ func TestMatrixSyncForwardsMediaToBeeper(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := &fakeBeeperAPI{}
-	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!chat:beeper"}
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/_matrix/client/v3/sync":
@@ -167,7 +221,6 @@ func TestMatrixSyncForwardsMediaToBeeper(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	cfg := DefaultConfig()
 	cfg.Matrix.HomeserverURL = server.URL
 	cfg.Matrix.UserID = "@bridge:local"
 	cfg.Matrix.InsecureSkipTLS = true
@@ -205,8 +258,10 @@ func TestMatrixSyncForwardsEditDeleteAndReactionToBeeper(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!chat:beeper"}
 	api := &fakeBeeperAPI{}
-	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -242,7 +297,6 @@ func TestMatrixSyncForwardsEditDeleteAndReactionToBeeper(t *testing.T) {
 		}`))
 	}))
 	defer server.Close()
-	cfg := DefaultConfig()
 	cfg.Matrix.HomeserverURL = server.URL
 	cfg.Matrix.UserID = "@bridge:local"
 	cfg.Matrix.InsecureSkipTLS = true
@@ -286,7 +340,14 @@ func TestMatrixSyncIgnoresBridgeEchoes(t *testing.T) {
 								"type": "m.room.message",
 								"event_id": "$echo:local",
 								"sender": "@bridge:local",
-								"content": {"msgtype": "m.text", "body": "mirrored"}
+								"content": {
+									"msgtype": "m.text",
+									"body": "mirrored",
+									"com.openclaw.beeper.source": {
+										"message_id": "$beeper-source",
+										"chat_id": "!chat:beeper"
+									}
+								}
 							}]
 						}
 					}
@@ -296,6 +357,7 @@ func TestMatrixSyncIgnoresBridgeEchoes(t *testing.T) {
 	}))
 	defer server.Close()
 	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!chat:beeper"}
 	cfg.Matrix.HomeserverURL = server.URL
 	cfg.Matrix.UserID = "@bridge:local"
 	cfg.Matrix.InsecureSkipTLS = true
@@ -305,5 +367,64 @@ func TestMatrixSyncIgnoresBridgeEchoes(t *testing.T) {
 	}
 	if len(api.sent) != 0 {
 		t.Fatalf("expected bridge echo to be ignored, got %#v", api.sent)
+	}
+}
+
+func TestMatrixSyncForwardsOwnUserMessageWithNativeGhostSenders(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{ID: "!chat:beeper", AccountID: "whatsapp", Name: "Test"}
+	if err := store.UpsertPortal(ctx, chat, "!room:local", "beeper-cursor"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{chat.ID}
+	api := &fakeBeeperAPI{}
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_matrix/client/v3/sync" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"next_batch": "sync-own-user",
+			"rooms": {
+				"join": {
+					"!room:local": {
+						"timeline": {
+							"events": [{
+								"type": "m.room.message",
+								"event_id": "$openclaw-extra:local",
+								"sender": "@bridge:local",
+								"content": {
+									"msgtype": "m.text",
+									"body": "extra from openclaw"
+								}
+							}]
+						}
+					}
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@bridge:local"
+	cfg.Matrix.NativeGhostSenders = true
+	cfg.Matrix.InsecureSkipTLS = true
+	source := NewMatrixClientSource(cfg, store, "matrix-token")
+	handled, err := source.SyncOnce(ctx, svc)
+	if err != nil {
+		t.Fatalf("SyncOnce returned error: %v", err)
+	}
+	if handled != 1 {
+		t.Fatalf("expected one handled Matrix event, got %d", handled)
+	}
+	if len(api.sent) != 1 {
+		t.Fatalf("expected one Beeper send, got %d", len(api.sent))
+	}
+	if api.sent[0].ChatID != chat.ID || api.sent[0].Text != "extra from openclaw" {
+		t.Fatalf("unexpected outbound: %#v", api.sent[0])
 	}
 }

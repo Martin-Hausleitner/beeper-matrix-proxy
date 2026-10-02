@@ -732,7 +732,7 @@ func (m *MatrixClientSink) EnsurePuppet(ctx context.Context, sender Sender) (str
 	if sender.ID == "" {
 		return "", nil
 	}
-	matrixUserID := "@" + MatrixGhostLocalpart(sender.ID) + ":beeper-source.local"
+	matrixUserID := "@" + MatrixGhostLocalpart(sender.ID) + ":" + m.matrixServerName()
 	if err := m.store.UpsertPuppet(ctx, sender, matrixUserID); err != nil {
 		return "", err
 	}
@@ -748,11 +748,21 @@ func (m *MatrixClientSink) SendMessage(ctx context.Context, outbound MatrixOutbo
 	if !outbound.Timestamp.IsZero() {
 		req.Timestamp = outbound.Timestamp.UnixMilli()
 	}
-	resp, err := m.client.SendMessageEvent(ctx, id.RoomID(outbound.RoomID), event.EventMessage, contentPayload(content, outbound), req)
+	resp, err := m.senderClient(outbound).SendMessageEvent(ctx, id.RoomID(outbound.RoomID), event.EventMessage, contentPayload(content, outbound), req)
 	if err != nil {
 		return "", err
 	}
 	return resp.EventID.String(), nil
+}
+
+func (m *MatrixClientSink) senderClient(outbound MatrixOutbound) *mautrix.Client {
+	if !m.cfg.Matrix.NativeGhostSenders || outbound.SenderMXID == "" {
+		return m.client
+	}
+	ghost := *m.client
+	ghost.UserID = id.UserID(outbound.SenderMXID)
+	ghost.SetAppServiceUserID = true
+	return &ghost
 }
 
 func (m *MatrixClientSink) EditMessage(ctx context.Context, outbound MatrixOutbound, targetEventID string) (string, error) {
@@ -838,17 +848,24 @@ func (m *MatrixClientSink) messageContent(ctx context.Context, outbound MatrixOu
 	if outbound.ReplyToEvent != "" {
 		content.GetRelatesTo().SetReplyTo(id.EventID(outbound.ReplyToEvent))
 	}
-	if m.cfg.Matrix.PrefixSender && outbound.SenderName != "" {
+	if m.shouldPrefixSender(outbound) {
 		content.Body = outbound.SenderName + ": " + content.Body
 	}
 	if outbound.HTML != "" {
 		content.Format = event.FormatHTML
 		content.FormattedBody = outbound.HTML
-		if m.cfg.Matrix.PrefixSender && outbound.SenderName != "" {
+		if m.shouldPrefixSender(outbound) {
 			content.FormattedBody = "<strong>" + html.EscapeString(outbound.SenderName) + "</strong>: " + outbound.HTML
 		}
 	}
 	return content, nil
+}
+
+func (m *MatrixClientSink) shouldPrefixSender(outbound MatrixOutbound) bool {
+	if !m.cfg.Matrix.PrefixSender || outbound.SenderName == "" {
+		return false
+	}
+	return !m.cfg.Matrix.NativeGhostSenders || outbound.SenderMXID == ""
 }
 
 func contentPayload(content *event.MessageEventContent, outbound MatrixOutbound) map[string]any {

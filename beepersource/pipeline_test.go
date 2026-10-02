@@ -57,6 +57,46 @@ func TestReconcileMirrorsTextMessagesAndStoresMapping(t *testing.T) {
 	}
 }
 
+func TestReconcileAddsGeneratedSenderAvatarWhenProfilePhotoMissing(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	api := &fakeBeeperAPI{
+		chats: []Chat{{
+			ID:        "!chat:beeper",
+			AccountID: "whatsapp",
+			Network:   "WhatsApp",
+			Name:      "Fallback Chat",
+		}},
+		messages: map[string][]Message{
+			"!chat:beeper": {{
+				ID:         "$fallback-avatar",
+				ChatID:     "!chat:beeper",
+				SenderID:   "@alice:whatsapp.localhost",
+				SenderName: "Alice Example",
+				Type:       MessageTypeText,
+				Text:       "hello",
+				Timestamp:  time.Unix(100, 0).UTC(),
+			}},
+		},
+	}
+	matrix := &fakeMatrixSink{}
+	svc := NewService(DefaultConfig(), store, api, matrix)
+
+	if err := svc.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if len(matrix.events) != 1 || matrix.events[0].SenderAvatar == nil {
+		t.Fatalf("expected generated sender avatar, got %#v", matrix.events)
+	}
+	if matrix.events[0].SenderAvatar.MimeType != "image/png" {
+		t.Fatalf("expected PNG fallback avatar, got %q", matrix.events[0].SenderAvatar.MimeType)
+	}
+	if matrix.events[0].SenderName != "Alice Example" {
+		t.Fatalf("expected sender display name, got %q", matrix.events[0].SenderName)
+	}
+}
+
 func TestReconcileIsIdempotentWhenMessageMappingExists(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
@@ -1315,6 +1355,16 @@ func TestMatrixToBeeperHonorsSafetyModes(t *testing.T) {
 				cfg.Sync.Mode = SyncModeReadOnly
 			},
 		},
+		{
+			name:      "empty chat allowlist",
+			configure: func(cfg *Config) {},
+		},
+		{
+			name: "outside chat allowlist",
+			configure: func(cfg *Config) {
+				cfg.Beeper.ChatIDs = []string{"!other:beeper"}
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -1355,6 +1405,16 @@ func TestMatrixMutationsHonorSafetyModes(t *testing.T) {
 			name: "read only",
 			configure: func(cfg *Config) {
 				cfg.Sync.Mode = SyncModeReadOnly
+			},
+		},
+		{
+			name:      "empty chat allowlist",
+			configure: func(cfg *Config) {},
+		},
+		{
+			name: "outside chat allowlist",
+			configure: func(cfg *Config) {
+				cfg.Beeper.ChatIDs = []string{"!other:beeper"}
 			},
 		},
 	} {
@@ -1430,7 +1490,9 @@ func TestMatrixToBeeperUsesDeterministicEchoKey(t *testing.T) {
 	store := openTestStore(t)
 	defer store.Close()
 	api := &fakeBeeperAPI{}
-	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!chat:beeper"}
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
 
 	err := svc.HandleMatrixMessage(ctx, MatrixInbound{
 		ChatID:        "!chat:beeper",
@@ -1461,7 +1523,9 @@ func TestMatrixToBeeperRemapsReplyTargetToBeeperMessageID(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := &fakeBeeperAPI{}
-	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!chat:beeper"}
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
 
 	err := svc.HandleMatrixMessage(ctx, MatrixInbound{
 		ChatID:        "!chat:beeper",
@@ -1489,6 +1553,7 @@ func TestMatrixToBeeperVoiceAIRepliesLocallyAndStillForwardsOriginalAudio(t *tes
 		t.Fatal(err)
 	}
 	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{chat.ID}
 	cfg.VoiceAI.Enabled = true
 	cfg.VoiceAI.AllowChatIDs = []string{chat.ID}
 	api := &fakeBeeperAPI{}
@@ -1541,6 +1606,7 @@ func TestMatrixToBeeperVoiceAIRequiresPositiveAllowlist(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{chat.ID}
 	cfg.VoiceAI.Enabled = true
 	api := &fakeBeeperAPI{}
 	matrix := &fakeMatrixSink{}
@@ -1581,6 +1647,7 @@ func TestMatrixToBeeperVoiceAIFailureDoesNotAbortBeeperSend(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{chat.ID}
 	cfg.VoiceAI.Enabled = true
 	cfg.VoiceAI.AllowChatIDs = []string{chat.ID}
 	api := &fakeBeeperAPI{}
@@ -1638,7 +1705,9 @@ func TestReconcileSuppressesEchoAfterMatrixToBeeperSend(t *testing.T) {
 		},
 	}
 	matrix := &fakeMatrixSink{}
-	svc := NewService(DefaultConfig(), store, api, matrix)
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!chat:beeper"}
+	svc := NewService(cfg, store, api, matrix)
 	if err := svc.HandleMatrixMessage(ctx, MatrixInbound{
 		ChatID:        "!chat:beeper",
 		MatrixEventID: "$matrix-origin:local",
@@ -2093,7 +2162,9 @@ func TestMatrixReactionRedactionRemovesBeeperReaction(t *testing.T) {
 	store := openTestStore(t)
 	defer store.Close()
 	api := &fakeBeeperAPI{}
-	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!chat:beeper"}
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
 	if err := store.UpsertMessageMapping(ctx, MessageMapping{
 		BeeperMessageID: "$beeper-target",
 		MatrixEventID:   "$matrix-target:local",
@@ -2125,7 +2196,9 @@ func TestMatrixMessageStoresReturnedBeeperIDForImmediateMutations(t *testing.T) 
 	store := openTestStore(t)
 	defer store.Close()
 	api := &fakeBeeperAPI{}
-	svc := NewService(DefaultConfig(), store, api, &fakeMatrixSink{})
+	cfg := DefaultConfig()
+	cfg.Beeper.ChatIDs = []string{"!chat:beeper"}
+	svc := NewService(cfg, store, api, &fakeMatrixSink{})
 
 	if err := svc.HandleMatrixMessage(ctx, MatrixInbound{
 		ChatID:        "!chat:beeper",

@@ -227,7 +227,7 @@ func TestSenderAvatarPrefersPrivateOverride(t *testing.T) {
 	cfg.Matrix.ContactAvatarOverridesPath = overrideFile
 	svc := NewService(cfg, store, api, &fakeMatrixSink{})
 
-	avatar, err := svc.senderAvatarMedia(ctx, Sender{ID: "@sender:whatsapp", AvatarID: "localmxc://sender-avatar"})
+	avatar, err := svc.senderAvatarMedia(ctx, Chat{ID: "!chat:beeper", AccountID: "whatsapp", Network: "WhatsApp"}, Sender{ID: "@sender:whatsapp", AvatarID: "localmxc://sender-avatar"})
 	if err != nil {
 		t.Fatal(err)
 	}
