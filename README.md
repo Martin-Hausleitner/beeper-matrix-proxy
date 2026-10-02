@@ -254,7 +254,8 @@ accounts (WhatsApp, Telegram, Signal, X, and other Beeper-backed networks) as
 Matrix rooms on your own Synapse.
 
 For a safe first import that only creates/updates rooms and does not send
-anything back to real Beeper contacts:
+anything back to real Beeper contacts, use read-only mode. This block is for
+rooms-only import/diagnostics, not for the live OpenClaw send bridge:
 
 ```bash
 export BEEPER_MATRIX_PROXY_SYNC_MODE=read_only
@@ -398,7 +399,8 @@ contacts:
 
 To import reachable Beeper message history into those Matrix portal rooms
 without sending anything back to real contacts, run the read-only history
-backfill:
+backfill. This block is also import-only; do not copy it into the live send
+bridge runner:
 
 ```bash
 export BEEPER_MATRIX_PROXY_SYNC_MODE=read_only
@@ -444,15 +446,27 @@ After the first reconcile pass, open Cinny at:
 https://cinny.example.local/login/matrix.example.local
 ```
 
-The current implementation is a pragmatic v1 mirror: messages are sent by the
-configured Matrix account with a Beeper per-message profile and sender prefix so
-Cinny can show who wrote them. For bidirectional testing, run the proxy with a
-dedicated Matrix bridge account and set `BEEPER_MATRIX_PROXY_MATRIX_INVITE_USER_ID`
-to the Matrix user that will use Cinny. The Matrix `/sync` reader ignores events
-from the bridge account, forwards user-authored portal-room messages to Beeper,
-and suppresses the Beeper echo on the next reconcile pass. The next production
-step is a true Synapse appservice registration for one Matrix ghost user per
-Beeper sender.
+By default, messages are sent by the configured Matrix account with a Beeper
+per-message profile and sender prefix. This is readable, but clients that do
+not understand Beeper's `com.beeper.per_message_profile` extension, including
+stock Cinny, still show the bridge account as the event sender. For native
+Matrix UI with one row/avatar/name per real Beeper participant, run the proxy
+with a Synapse appservice token and enable appservice ghost senders:
+
+```bash
+export BEEPER_MATRIX_PROXY_MATRIX_NATIVE_GHOST_SENDERS=true
+export BEEPER_MATRIX_PROXY_MATRIX_PREFIX_SENDER=false
+```
+
+In that mode, outgoing Beeper-source messages are sent with `user_id=@ghost`
+for the mapped participant, so Cinny and Element can render the actual Matrix
+sender instead of a `Name: message` text prefix. The homeserver appservice
+registration must allow the generated ghost user namespace. For bidirectional
+testing, run the proxy with a dedicated Matrix bridge account and set
+`BEEPER_MATRIX_PROXY_MATRIX_INVITE_USER_ID` to the Matrix user that will use
+Cinny. The Matrix `/sync` reader ignores events from the bridge account,
+forwards user-authored portal-room messages to Beeper, and suppresses the
+Beeper echo on the next reconcile pass.
 
 ## Performance Snapshot
 
@@ -577,7 +591,7 @@ Legend:
 | Read receipts | Supported | Both | Real Synapse ephemeral E2E | Exact Beeper receipts are sent to remote Matrix; remote Matrix receipts are queued to Beeper. |
 | Native audio/video calls | Not supported | Both | Intentionally hidden | Custom bridges should emit call notices/links instead of fake native call UI. |
 | End-to-end encryption | Planned | Both | Not implemented as a product feature | Needs a separate device, key, and trust model design. |
-| Beeper source rooms | Partial | Bidirectional text, media, edits, deletes, reactions | Live local test groups + unit tests | New subsystem creates Matrix rooms from Beeper chats and can group them with Matrix Spaces by messenger service. True appservice ghost senders, full WebSocket daemon mode, polls, calls, and large-file streaming are next. |
+| Beeper source rooms | Partial | Bidirectional text, media, edits, deletes, reactions | Live local test groups + unit tests | New subsystem creates Matrix rooms from Beeper chats and can group them with Matrix Spaces by messenger service. Appservice ghost sender mode is implemented as an opt-in for native sender rows in Cinny/Element, but still requires a real homeserver appservice registration/token. Full WebSocket daemon mode, polls, calls, and large-file streaming are next. |
 
 ## Can This Reuse Existing Beeper Bridges?
 

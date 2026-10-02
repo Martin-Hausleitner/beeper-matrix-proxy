@@ -63,15 +63,13 @@ func (nc *MyNetworkClient) handleLocalMatrixEvent(ctx context.Context, evt *even
 		return
 	}
 	content := cloneMessageContent(messageContentFromEventContent(evt.Content))
+	sender, isFromMe := nc.senderForLocalMatrixEvent(ctx, evt, content)
 	if replaceID := content.OptionalGetRelatesTo().GetReplaceID(); replaceID != "" {
 		nc.handleLocalMatrixEdit(ctx, evt, content, replaceID)
 		return
 	}
 	portalID := networkid.PortalID(evt.RoomID)
-	sender := networkid.UserID(evt.Sender)
-	isFromMe := evt.Sender == nc.mx.UserID
-	body := evt.Content
-	remote := &simplevent.Message[event.Content]{
+	remote := &simplevent.Message[*event.MessageEventContent]{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessage,
 			PortalKey: networkid.PortalKey{ID: portalID, Receiver: nc.login.ID},
@@ -82,10 +80,10 @@ func (nc *MyNetworkClient) handleLocalMatrixEvent(ctx context.Context, evt *even
 			CreatePortal: true,
 			Timestamp:    eventTimestamp(evt),
 		},
-		Data: body,
+		Data: content,
 		ID:   networkid.MessageID(evt.ID),
-		ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data event.Content) (*bridgev2.ConvertedMessage, error) {
-			content := cloneMessageContent(messageContentFromEventContent(data))
+		ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data *event.MessageEventContent) (*bridgev2.ConvertedMessage, error) {
+			content := cloneMessageContent(data)
 			replyTo, threadRoot := remoteRelationTargets(content)
 			removeRemoteRelationTargets(content)
 			if err := nc.reuploadContentToBeeper(ctx, intent, content); err != nil {
@@ -100,11 +98,58 @@ func (nc *MyNetworkClient) handleLocalMatrixEvent(ctx context.Context, evt *even
 				}},
 			}, nil
 		},
-		HandleExistingFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message, data event.Content) (bridgev2.UpsertResult, error) {
+		HandleExistingFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, existing []*database.Message, data *event.MessageEventContent) (bridgev2.UpsertResult, error) {
 			return bridgev2.UpsertResult{}, nil
 		},
 	}
 	nc.bridge.QueueRemoteEvent(nc.login, remote)
+}
+
+func (nc *MyNetworkClient) senderForLocalMatrixEvent(ctx context.Context, evt *event.Event, content *event.MessageEventContent) (networkid.UserID, bool) {
+	sender := networkid.UserID(evt.Sender)
+	isFromMe := evt.Sender == nc.mx.UserID
+	profile := content.BeeperPerMessageProfile
+	if profile == nil || profile.ID == "" || profile.Displayname == "" {
+		return sender, isFromMe
+	}
+	content.RemovePerMessageProfileFallback()
+	content.BeeperPerMessageProfile = nil
+	profileSender := networkid.UserID(profile.ID)
+	nc.rememberRemoteProfile(ctx, profileSender, profile)
+	return profileSender, false
+}
+
+func (nc *MyNetworkClient) rememberRemoteProfile(ctx context.Context, sender networkid.UserID, profile *event.BeeperPerMessageProfile) {
+	if sender == "" || profile == nil || profile.Displayname == "" {
+		return
+	}
+	name := profile.Displayname
+	info := &bridgev2.UserInfo{Name: &name}
+	if profile.AvatarURL != nil && string(*profile.AvatarURL) != "" {
+		info.Avatar = nc.avatarFromMXC(ctx, *profile.AvatarURL)
+	}
+	nc.profileMu.Lock()
+	if nc.remoteProfiles == nil {
+		nc.remoteProfiles = make(map[networkid.UserID]*bridgev2.UserInfo)
+	}
+	nc.remoteProfiles[sender] = info
+	nc.profileMu.Unlock()
+}
+
+func (nc *MyNetworkClient) cachedRemoteProfile(sender networkid.UserID) (*bridgev2.UserInfo, bool) {
+	nc.profileMu.RLock()
+	defer nc.profileMu.RUnlock()
+	info, ok := nc.remoteProfiles[sender]
+	if !ok || info == nil {
+		return nil, false
+	}
+	clone := &bridgev2.UserInfo{}
+	if info.Name != nil {
+		name := *info.Name
+		clone.Name = &name
+	}
+	clone.Avatar = info.Avatar
+	return clone, true
 }
 
 func (nc *MyNetworkClient) handleLocalMatrixEdit(ctx context.Context, evt *event.Event, content *event.MessageEventContent, target id.EventID) {
@@ -115,14 +160,14 @@ func (nc *MyNetworkClient) handleLocalMatrixEdit(ctx context.Context, evt *event
 		return
 	}
 	portalID := networkid.PortalID(evt.RoomID)
-	sender := networkid.UserID(evt.Sender)
+	sender, isFromMe := nc.senderForLocalMatrixEvent(ctx, evt, content)
 	remote := &simplevent.Message[*event.MessageEventContent]{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventEdit,
 			PortalKey: networkid.PortalKey{ID: portalID, Receiver: nc.login.ID},
 			Sender: bridgev2.EventSender{
 				Sender:   sender,
-				IsFromMe: evt.Sender == nc.mx.UserID,
+				IsFromMe: isFromMe,
 			},
 			CreatePortal: true,
 			Timestamp:    eventTimestamp(evt),

@@ -54,11 +54,17 @@ func (m *MatrixClientSource) SyncOnce(ctx context.Context, service *Service) (in
 		if !ok {
 			continue
 		}
+		if !m.matrixToBeeperChatAllowed(chatID) {
+			continue
+		}
 		for _, ev := range room.Timeline.Events {
-			if ev.Sender == m.cfg.Matrix.UserID || ev.EventID == "" {
+			if ev.EventID == "" {
 				continue
 			}
-			if ev.Content.VoiceAI != nil {
+			if ev.Content.BeeperSource != nil || ev.Content.VoiceAI != nil {
+				continue
+			}
+			if ev.Sender == m.cfg.Matrix.UserID && !m.cfg.Matrix.NativeGhostSenders {
 				continue
 			}
 			if err := m.handleEvent(ctx, service, chatID, roomID, ev); err != nil {
@@ -71,6 +77,18 @@ func (m *MatrixClientSource) SyncOnce(ctx context.Context, service *Service) (in
 		return handled, m.store.SetValue(ctx, matrixSyncSinceKey, resp.NextBatch)
 	}
 	return handled, nil
+}
+
+func (m *MatrixClientSource) matrixToBeeperChatAllowed(chatID string) bool {
+	if len(m.cfg.Beeper.ChatIDs) == 0 {
+		return false
+	}
+	for _, allowed := range m.cfg.Beeper.ChatIDs {
+		if strings.TrimSpace(allowed) == chatID {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *MatrixClientSource) handleEvent(ctx context.Context, service *Service, chatID string, roomID string, ev matrixSyncEvent) error {
@@ -272,6 +290,7 @@ type matrixSyncEvent struct {
 				EventID string `json:"event_id"`
 			} `json:"m.in_reply_to"`
 		} `json:"m.relates_to"`
-		VoiceAI *VoiceAIMetadata `json:"com.openclaw.voice_ai"`
+		BeeperSource *json.RawMessage `json:"com.openclaw.beeper.source"`
+		VoiceAI      *VoiceAIMetadata `json:"com.openclaw.voice_ai"`
 	} `json:"content"`
 }

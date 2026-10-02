@@ -398,6 +398,46 @@ func TestRoomCapabilitiesExposeCriticalBeeperMediaTypes(t *testing.T) {
 	}
 }
 
+func TestPerMessageProfileBecomesRemoteSender(t *testing.T) {
+	nc := &MyNetworkClient{
+		mx: &mautrix.Client{UserID: "@openclaw:matrix.example"},
+	}
+	content := &event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    "Florian Freund: hello from whatsapp",
+		BeeperPerMessageProfile: &event.BeeperPerMessageProfile{
+			ID:          "whatsapp:+436600000000",
+			Displayname: "Florian Freund",
+			HasFallback: true,
+		},
+	}
+	evt := &event.Event{Sender: "@openclaw:matrix.example"}
+
+	sender, isFromMe := nc.senderForLocalMatrixEvent(context.Background(), evt, content)
+
+	if sender != "whatsapp:+436600000000" {
+		t.Fatalf("expected per-message profile sender, got %q", sender)
+	}
+	if isFromMe {
+		t.Fatal("expected relayed Beeper profile to not be marked as local user")
+	}
+	if content.Body != "hello from whatsapp" {
+		t.Fatalf("expected fallback prefix to be stripped, got %q", content.Body)
+	}
+	if content.BeeperPerMessageProfile != nil {
+		t.Fatal("expected profile metadata to be consumed after sender rewrite")
+	}
+	info, err := nc.GetUserInfo(context.Background(), &bridgev2.Ghost{
+		Ghost: &database.Ghost{ID: sender},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info == nil || info.Name == nil || *info.Name != "Florian Freund" {
+		t.Fatalf("expected cached profile display name, got %#v", info)
+	}
+}
+
 func TestCleanEditContentUsesNewContentWithoutLegacyPrefix(t *testing.T) {
 	content := &event.MessageEventContent{
 		MsgType: event.MsgText,

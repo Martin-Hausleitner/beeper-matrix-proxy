@@ -86,9 +86,9 @@ export BEEPER_MATRIX_PROXY_DISABLE_MATRIX_TO_BEEPER=true
 Remove that line only after a real test voice note has produced exactly one
 marked Matrix `m.notice` reply.
 
-The dedicated `run-beeper-source-voice-ai.sh` runner defaults this switch to
-`true`. Set it explicitly to `false` only when you want Matrix-origin audio in
-portal rooms to be forwarded to WhatsApp/Signal as well.
+The dedicated `run-beeper-source-voice-ai.sh` runner now defaults this switch to
+`false` for the live OpenClaw bridge. Set it explicitly to `true` only for a
+temporary read-only diagnostic run.
 
 ## Live replay proof
 

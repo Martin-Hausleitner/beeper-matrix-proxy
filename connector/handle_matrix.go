@@ -74,6 +74,9 @@ func rewriteContentRelationsForLocalMatrix(content *event.MessageEventContent, r
 
 // GetUserInfo is not implemented for this simple connector.
 func (nc *MyNetworkClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+	if info, ok := nc.cachedRemoteProfile(networkid.UserID(ghost.ID)); ok {
+		return info, nil
+	}
 	userID := id.UserID(ghost.ID)
 	name := userID.String()
 	info := &bridgev2.UserInfo{Name: &name}
@@ -142,19 +145,20 @@ func (nc *MyNetworkClient) GetCapabilities(ctx context.Context, portal *bridgev2
 			event.FmtUnorderedList: event.CapLevelFullySupported,
 			event.FmtOrderedList:   event.CapLevelFullySupported,
 		},
-		LocationMessage:      event.CapLevelFullySupported,
-		Poll:                 event.CapLevelFullySupported,
-		Edit:                 event.CapLevelFullySupported,
-		EditMaxCount:         100,
-		EditMaxAge:           &editMaxAge,
-		Delete:               event.CapLevelFullySupported,
-		DeleteMaxAge:         &deleteMaxAge,
-		Reply:                event.CapLevelFullySupported,
-		Thread:               event.CapLevelFullySupported,
-		Reaction:             event.CapLevelFullySupported,
-		ReactionCount:        1,
-		CustomEmojiReactions: true,
-		ReadReceipts:         true,
-		TypingNotifications:  true,
+		LocationMessage:        event.CapLevelFullySupported,
+		Poll:                   event.CapLevelFullySupported,
+		Edit:                   event.CapLevelFullySupported,
+		EditMaxCount:           100,
+		EditMaxAge:             &editMaxAge,
+		Delete:                 event.CapLevelFullySupported,
+		DeleteMaxAge:           &deleteMaxAge,
+		Reply:                  event.CapLevelFullySupported,
+		Thread:                 event.CapLevelFullySupported,
+		Reaction:               event.CapLevelFullySupported,
+		ReactionCount:          1,
+		CustomEmojiReactions:   true,
+		ReadReceipts:           true,
+		TypingNotifications:    true,
+		PerMessageProfileRelay: true,
 	}
 }

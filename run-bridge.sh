@@ -20,6 +20,10 @@ export BEEPER_MATRIX_PROXY_BINARY="${BEEPER_MATRIX_PROXY_BINARY:-$BEEPER_MATRIX_
 export BEEPER_BRIDGE_NAME="${BEEPER_BRIDGE_NAME:-sh-vcvm-matrix}"
 export BEEPER_MATRIX_PROXY_AUTOBUILD="${BEEPER_MATRIX_PROXY_AUTOBUILD:-1}"
 export BEEPER_BBCTL="${BEEPER_BBCTL:-$(command -v bbctl || true)}"
+if [[ "${BEEPER_LEGACY_APPSERVICE_ENABLE:-0}" != "1" ]]; then
+  echo "Legacy appservice bridge startup is disabled. Set BEEPER_LEGACY_APPSERVICE_ENABLE=1 only for an intentional legacy bridge run." >&2
+  exit 64
+fi
 if [[ -z "$BEEPER_BBCTL" && -x "$HOME/.local/bin/bbctl" ]]; then
   export BEEPER_BBCTL="$HOME/.local/bin/bbctl"
 fi

@@ -61,7 +61,8 @@ go build -o beeper-source ./cmd/beeper-source
 
 Start with a read-only run. This creates or refreshes Matrix-side portal rooms
 from Beeper data, but prevents Matrix events from being sent back to real
-contacts.
+contacts. This section is for avatar/import repair only; do not use it as the
+live OpenClaw send bridge configuration.
 
 ```bash
 export BEEPER_ACCESS_TOKEN="..." # keep in a secret manager in production

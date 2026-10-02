@@ -34,6 +34,7 @@ type MatrixConfig struct {
 	RoomNamePrefix             string
 	RoomNameIncludePlatform    bool
 	PrefixSender               bool
+	NativeGhostSenders         bool
 	PlatformAvatars            bool
 	DMParticipantAvatars       bool
 	AvatarClientProfile        string
@@ -132,6 +133,7 @@ func DefaultConfig() Config {
 			RoomNamePrefix:             envStringAllowEmpty("BEEPER_MATRIX_PROXY_MATRIX_ROOM_PREFIX", ""),
 			RoomNameIncludePlatform:    envBool("BEEPER_MATRIX_PROXY_MATRIX_ROOM_INCLUDE_PLATFORM", false),
 			PrefixSender:               envBool("BEEPER_MATRIX_PROXY_MATRIX_PREFIX_SENDER", true),
+			NativeGhostSenders:         envBool("BEEPER_MATRIX_PROXY_MATRIX_NATIVE_GHOST_SENDERS", false),
 			PlatformAvatars:            envBool("BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS", false),
 			DMParticipantAvatars:       envBool("BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS", true),
 			AvatarClientProfile:        envString("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_CLIENT_PROFILE", "cinny"),
@@ -217,6 +219,7 @@ func DefaultConfig() Config {
 		applyAvatarClientProfile(&cfg)
 	}
 	cfg.Matrix.PlatformAvatars = envBool("BEEPER_MATRIX_PROXY_MATRIX_PLATFORM_AVATARS", cfg.Matrix.PlatformAvatars)
+	cfg.Matrix.NativeGhostSenders = envBool("BEEPER_MATRIX_PROXY_MATRIX_NATIVE_GHOST_SENDERS", cfg.Matrix.NativeGhostSenders)
 	cfg.Matrix.DMParticipantAvatars = envBool("BEEPER_MATRIX_PROXY_MATRIX_DM_PARTICIPANT_AVATARS", cfg.Matrix.DMParticipantAvatars)
 	cfg.Matrix.AvatarBadges = envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_BADGES", cfg.Matrix.AvatarBadges)
 	cfg.Matrix.AvatarFallbackBadges = envBool("BEEPER_MATRIX_PROXY_MATRIX_AVATAR_FALLBACK_BADGES", cfg.Matrix.AvatarFallbackBadges)

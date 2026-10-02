@@ -57,6 +57,8 @@ type MyNetworkClient struct {
 	remoteTyping       map[id.RoomID]map[id.UserID]struct{}
 	reactionMu         sync.Mutex
 	remoteReactions    map[id.EventID]remoteReaction
+	profileMu          sync.RWMutex
+	remoteProfiles     map[networkid.UserID]*bridgev2.UserInfo
 }
 
 func (nc *MyNetworkClient) Connect(ctx context.Context) {

@@ -147,11 +147,12 @@ func (c *MyConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLog
 		Msg("LoadUserLogin called")
 
 	client := &MyNetworkClient{
-		log:        c.log.With().Str("user_id", string(login.ID)).Logger(),
-		bridge:     c.bridge,
-		login:      login,
-		connector:  c,
-		sentEvents: make(map[id.EventID]struct{}),
+		log:            c.log.With().Str("user_id", string(login.ID)).Logger(),
+		bridge:         c.bridge,
+		login:          login,
+		connector:      c,
+		sentEvents:     make(map[id.EventID]struct{}),
+		remoteProfiles: make(map[networkid.UserID]*bridgev2.UserInfo),
 	}
 	client.metadata = newLoginMetadataStore(login)
 	if meta, ok := login.Metadata.(*LoginMetadata); ok {

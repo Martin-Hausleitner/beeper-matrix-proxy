@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	beeperdesktopapi "github.com/beeper/desktop-api-go/v5"
@@ -45,6 +46,9 @@ func (a *DesktopAPIAdapter) ListChats(ctx context.Context) ([]Chat, error) {
 		for _, chatID := range a.cfg.Beeper.ChatIDs {
 			chat, err := a.sdk.Client.Chats.Get(ctx, chatID, beeperdesktopapi.ChatGetParams{})
 			if err != nil {
+				if isBeeperChatNotFound(err) {
+					continue
+				}
 				return nil, err
 			}
 			chats = append(chats, convertSDKChat(*chat))
@@ -66,6 +70,16 @@ func (a *DesktopAPIAdapter) ListChats(ctx context.Context) ([]Chat, error) {
 		}
 	}
 	return chats, nil
+}
+
+func isBeeperChatNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "404") ||
+		strings.Contains(text, "not_found") ||
+		strings.Contains(text, "not found")
 }
 
 func (a *DesktopAPIAdapter) ListMessages(ctx context.Context, chatID string, afterCursor string, limit int) ([]Message, string, error) {

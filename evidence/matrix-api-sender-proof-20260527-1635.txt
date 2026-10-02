@@ -1,0 +1,1 @@
+Wrapper Matrix API proof: /_matrix/client/v3/rooms/!CkphevUmhwBeNjLdkS:100.120.120.120/messages returned split senders @david_krausi and @danijel_balog without speaker prefixes. See terminal verification in Codex run.
