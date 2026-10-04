@@ -36,6 +36,7 @@ type MyConnector struct {
 	bridge         *bridgev2.Bridge
 	directMedia    bool
 	directMediaMu  sync.RWMutex
+	clientsMu      sync.RWMutex
 	clientsByLogin map[networkid.UserLoginID]*MyNetworkClient
 }
 
@@ -169,10 +170,14 @@ func (c *MyConnector) LoadUserLogin(ctx context.Context, login *bridgev2.UserLog
 		client.loggedIn = meta.AccessToken != ""
 	}
 
+	c.clientsMu.Lock()
+	previousClient := c.clientsByLogin[login.ID]
+	if previousClient != nil && previousClient != client {
+		previousClient.retire()
+	}
 	login.Client = client
-	c.directMediaMu.Lock()
 	c.clientsByLogin[login.ID] = client
-	c.directMediaMu.Unlock()
+	c.clientsMu.Unlock()
 
 	c.log.Info().
 		Str("user_id", string(login.ID)).
@@ -308,9 +313,9 @@ func (c *MyConnector) Download(ctx context.Context, mediaID networkid.MediaID, p
 	if err != nil {
 		return nil, mautrix.MNotFound.WithMessage("Invalid direct media ID")
 	}
-	c.directMediaMu.RLock()
+	c.clientsMu.RLock()
 	client := c.clientsByLogin[networkid.UserLoginID(payload.LoginID)]
-	c.directMediaMu.RUnlock()
+	c.clientsMu.RUnlock()
 	if client == nil {
 		return nil, mautrix.MNotFound.WithMessage("Direct media login is not connected")
 	}
