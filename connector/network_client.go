@@ -32,35 +32,52 @@ const (
 // MyNetworkClient implements the bridgev2.NetworkAPI for interacting
 // with the simple network on behalf of a specific user login.
 type MyNetworkClient struct {
-	log                zerolog.Logger
-	bridge             *bridgev2.Bridge
-	login              *bridgev2.UserLogin
-	connector          *MyConnector
-	metadata           *loginMetadataStore
-	mx                 *mautrix.Client
-	connectMu          sync.Mutex
-	cancel             context.CancelFunc
-	syncGeneration     uint64
-	syncHandlersReady  bool
-	reconnectScheduled bool
-	reconnectAttempts  int
-	loggedIn           bool
-	sentMu             sync.Mutex
-	sentEvents         map[id.EventID]struct{}
-	sentEventOrder     []id.EventID
-	avatarMu           sync.Mutex
-	badAvatars         map[id.ContentURIString]struct{}
-	fallbackAvatars    map[id.ContentURIString]*bridgev2.Avatar
-	mediaMu            sync.RWMutex
-	localMaxUploadSize int64
-	typingMu           sync.Mutex
-	remoteTyping       map[id.RoomID]map[id.UserID]struct{}
-	reactionMu         sync.Mutex
-	remoteReactions    map[id.EventID]remoteReaction
+	log                 zerolog.Logger
+	bridge              *bridgev2.Bridge
+	login               *bridgev2.UserLogin
+	connector           *MyConnector
+	metadata            *loginMetadataStore
+	mx                  *mautrix.Client
+	connectMu           sync.Mutex
+	cancel              context.CancelFunc
+	syncGeneration      uint64
+	reconnectGeneration uint64
+	syncHandlersReady   bool
+	reconnectScheduled  bool
+	reconnectAttempts   int
+	retired             bool
+	loggedIn            bool
+	sentMu              sync.Mutex
+	sentEvents          map[id.EventID]struct{}
+	sentEventOrder      []id.EventID
+	avatarMu            sync.Mutex
+	badAvatars          map[id.ContentURIString]struct{}
+	fallbackAvatars     map[id.ContentURIString]*bridgev2.Avatar
+	mediaMu             sync.RWMutex
+	localMaxUploadSize  int64
+	typingMu            sync.Mutex
+	remoteTyping        map[id.RoomID]map[id.UserID]struct{}
+	reactionMu          sync.Mutex
+	remoteReactions     map[id.EventID]remoteReaction
 }
 
 func (nc *MyNetworkClient) Connect(ctx context.Context) {
+	nc.connect(ctx, nil)
+}
+
+// connect starts the remote sync. A non-nil expected generation is used by
+// delayed retry workers to avoid reviving a client that was replaced while it
+// was waiting to retry.
+func (nc *MyNetworkClient) connect(ctx context.Context, expectedReconnectGeneration *uint64) {
 	nc.connectMu.Lock()
+	if expectedReconnectGeneration != nil && *expectedReconnectGeneration != nc.reconnectGeneration {
+		nc.connectMu.Unlock()
+		return
+	}
+	if nc.retired {
+		nc.connectMu.Unlock()
+		return
+	}
 	if nc.mx == nil {
 		nc.loggedIn = false
 		nc.log.Error().Msg("Remote Matrix client missing")
@@ -228,23 +245,33 @@ func (nc *MyNetworkClient) sendBadCredentials(login *bridgev2.UserLogin, err err
 }
 
 func (nc *MyNetworkClient) reconnectAfterRemoteSyncFailure() {
+	nc.reconnectAfterRemoteSyncFailureWithDelay(remoteReconnectDelay)
+}
+
+func (nc *MyNetworkClient) reconnectAfterRemoteSyncFailureWithDelay(delayFunc func(int) time.Duration) {
 	nc.connectMu.Lock()
 	attempt := nc.reconnectAttempts
+	reconnectGeneration := nc.reconnectGeneration
 	if nc.reconnectAttempts < 10 {
 		nc.reconnectAttempts++
 	}
-	delay := remoteReconnectDelay(attempt)
 	nc.connectMu.Unlock()
-	time.Sleep(delay)
+	time.Sleep(delayFunc(attempt))
 	nc.connectMu.Lock()
-	shouldReconnect := nc.cancel == nil && nc.mx != nil
-	nc.reconnectScheduled = false
+	if reconnectGeneration != nc.reconnectGeneration {
+		nc.connectMu.Unlock()
+		return
+	}
+	shouldReconnect := nc.cancel == nil && nc.mx != nil && nc.reconnectScheduled
+	if shouldReconnect {
+		nc.reconnectScheduled = false
+	}
 	nc.connectMu.Unlock()
 	if !shouldReconnect {
 		return
 	}
 	nc.log.Info().Msg("Retrying remote Matrix sync after transient failure")
-	nc.Connect(context.Background())
+	nc.connect(context.Background(), &reconnectGeneration)
 }
 
 func remoteReconnectDelay(attempt int) time.Duration {
@@ -365,8 +392,27 @@ func (nc *MyNetworkClient) resyncLocalRoomInfo(ctx context.Context, roomID id.Ro
 }
 
 func (nc *MyNetworkClient) Disconnect() {
+	nc.disconnect(false)
+}
+
+func (nc *MyNetworkClient) retire() {
+	nc.disconnect(true)
+}
+
+func (nc *MyNetworkClient) disconnect(retire bool) {
 	nc.connectMu.Lock()
 	defer nc.connectMu.Unlock()
+	if retire {
+		nc.retired = true
+	}
+	nc.syncGeneration++
+	nc.reconnectGeneration++
+	nc.reconnectScheduled = false
+	nc.reconnectAttempts = 0
+	nc.loggedIn = false
+	if nc.login != nil && nc.login.BridgeState != nil {
+		nc.login.BridgeState.StopUnknownErrorReconnect()
+	}
 	if nc.cancel != nil {
 		nc.cancel()
 		nc.cancel = nil
@@ -430,7 +476,6 @@ func (nc *MyNetworkClient) pruneSentEventsLocked() {
 
 func (nc *MyNetworkClient) LogoutRemote(ctx context.Context) {
 	nc.Disconnect()
-	nc.loggedIn = false
 }
 
 // IsThisUser checks if the given remote network user ID belongs to this client instance.
@@ -439,6 +484,8 @@ func (nc *MyNetworkClient) IsThisUser(ctx context.Context, userID networkid.User
 }
 
 func (nc *MyNetworkClient) IsLoggedIn() bool {
+	nc.connectMu.Lock()
+	defer nc.connectMu.Unlock()
 	return nc.loggedIn
 }
 

@@ -12,7 +12,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
-	"maunium.net/go/mautrix/id"
 )
 
 const (
@@ -112,13 +111,7 @@ func (sl *SimpleLogin) SubmitUserInput(ctx context.Context, input map[string]str
 	}
 
 	sl.Log.Info().Str("login_id", string(ul.ID)).Msg("Successfully 'logged in' and created user login")
-	cli.UserID = id.UserID(loginResp.UserID)
-	cli.AccessToken = loginResp.AccessToken
-
-	err = sl.Main.LoadUserLogin(ctx, ul)
-	if err != nil {
-		sl.Log.Err(err).Msg("Failed to load user login after creation (this might indicate an issue)")
-	}
+	ul.Client.Connect(ctx)
 
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeComplete,
