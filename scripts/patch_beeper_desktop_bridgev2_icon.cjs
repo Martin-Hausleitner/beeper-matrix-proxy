@@ -53,9 +53,22 @@ function listLoadStoreFiles(root = appRoot) {
   return files;
 }
 
-function makeBackupPath(file) {
+function makeBackupPath(file, sequence = 0) {
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
-  return `${file}${backupMarker}${stamp}`;
+  return `${file}${backupMarker}${stamp}-${String(sequence).padStart(6, "0")}`;
+}
+
+function backupFile(file) {
+  for (let sequence = 0; sequence < 1000000; sequence += 1) {
+    const backup = makeBackupPath(file, sequence);
+    try {
+      fs.copyFileSync(file, backup, fs.constants.COPYFILE_EXCL);
+      return backup;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+  }
+  throw new Error("Could not allocate a unique icon backup path.");
 }
 
 function toDataUri(imagePath) {
@@ -111,8 +124,7 @@ function patchFile(file, svg) {
   const patched = patchText(original, svg);
   if (patched === original) return { file, status: "unchanged" };
 
-  const backup = makeBackupPath(file);
-  fs.copyFileSync(file, backup);
+  const backup = backupFile(file);
   fs.writeFileSync(file, patched);
   return { file, status: "patched", backup };
 }

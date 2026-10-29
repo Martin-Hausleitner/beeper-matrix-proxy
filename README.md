@@ -180,6 +180,12 @@ private evidence folders rather than committing them here.
 even when an incremental `/sync` response omits old state events. The snapshot
 command writes a restic-ready `snapshot/archive.sqlite` plus `manifest.json`
 that points at the content-addressed media objects included in the backup.
+Run the backup only after the snapshot command succeeds, with one snapshot
+writer per output directory. The database and manifest are prepared from the
+same SQLite snapshot, but their two final file replacements are not an atomic
+pair. After an interrupted or failed publication, rerun the snapshot command
+successfully before backing up that directory. Use a fresh output directory
+per generation when an earlier completed backup must remain unchanged.
 `repair-media --download-media` can re-scan already stored raw events when a new
 media extractor is added; it is used for Beeper per-message profile avatars so
 the static HTML archive shows sender photos offline.

@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"maunium.net/go/mautrix"
@@ -28,6 +29,7 @@ type MatrixClientSink struct {
 	store       *Store
 	client      *mautrix.Client
 	accessToken string
+	directMu    sync.Mutex
 }
 
 type MatrixRateLimitError struct {
@@ -482,6 +484,11 @@ func (m *MatrixClientSink) syncDirectMapping(ctx context.Context, chat Chat, roo
 	if target == "" {
 		return nil
 	}
+	// m.direct replaces the complete account-data map. Serialize the whole
+	// read/modify/write across this sink's portal workers. Other Matrix clients
+	// can still race: the account-data API has no compare-and-swap operation.
+	m.directMu.Lock()
+	defer m.directMu.Unlock()
 	direct, err := m.getDirectAccountData(ctx)
 	if err != nil {
 		return err

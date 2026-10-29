@@ -80,17 +80,10 @@
     }
   }
 
-  function findLocalStorageValue(candidateKeys, fallbackPredicate) {
+  function findLocalStorageValue(candidateKeys) {
     for (const key of candidateKeys) {
       const value = window.localStorage.getItem(key);
       if (typeof value === "string" && value.length > 0) return value;
-    }
-
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (!key) continue;
-      const value = window.localStorage.getItem(key);
-      if (typeof value === "string" && fallbackPredicate(key, value)) return value;
     }
 
     return "";
@@ -99,11 +92,9 @@
   function getAuth() {
     const directHomeserver = findLocalStorageValue(
       ["cinny_hs_base_url", "mx_hs_url", "homeserver"],
-      (_key, value) => /^https?:\/\//.test(value) && value.includes("_matrix") === false,
     );
     const directToken = findLocalStorageValue(
       ["cinny_access_token", "mx_access_token", "access_token"],
-      (key, value) => key.toLowerCase().includes("token") && value.startsWith("syt_"),
     );
 
     const session = readLocalStorageJson("cinny_session") || readLocalStorageJson("mx_session");
@@ -360,11 +351,17 @@
 
   function applyAvatarToIconNode(iconNode, avatarObjectUrl, platformKey = currentPlatformKey()) {
     if (!iconNode || !avatarObjectUrl) return;
+    if (
+      iconNode.dataset.openclawRoomAvatar === "ready" &&
+      iconNode.dataset.openclawRoomAvatarSource === avatarObjectUrl &&
+      iconNode.dataset.openclawRoomAvatarPlatform === (platformKey || "")
+    ) return;
 
     if (iconNode.tagName === "IMG") {
       const wrapper = document.createElement("span");
       wrapper.className = "openclaw-room-list-avatar";
       wrapper.dataset.openclawRoomAvatar = "ready";
+      wrapper.dataset.openclawRoomAvatarSource = avatarObjectUrl;
       wrapper.dataset.openclawRoomAvatarPlatform = platformKey || "";
       wrapper.style.inlineSize = `${Math.max(22, Math.round(iconNode.getBoundingClientRect().width || 22))}px`;
       wrapper.style.blockSize = `${Math.max(22, Math.round(iconNode.getBoundingClientRect().height || 22))}px`;
@@ -394,6 +391,7 @@
 
     iconNode.classList.add("openclaw-room-list-avatar");
     iconNode.dataset.openclawRoomAvatar = "ready";
+    iconNode.dataset.openclawRoomAvatarSource = avatarObjectUrl;
     iconNode.dataset.openclawRoomAvatarPlatform = platformKey || "";
     iconNode.replaceChildren();
 

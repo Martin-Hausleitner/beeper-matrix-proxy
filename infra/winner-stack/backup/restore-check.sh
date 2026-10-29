@@ -25,7 +25,19 @@ trap cleanup EXIT
 restic snapshots --tag matrix-stack
 restic restore latest --tag matrix-stack --target "$RESTORE_ROOT"
 
-latest_dir="$(find "$RESTORE_ROOT" -maxdepth 2 -type f -name manifest.json -print -quit | xargs dirname)"
+latest_dir=""
+# Restic preserves an absolute source path beneath --target; its depth varies.
+# Ignore unrelated manifests inside copied configs and reject ambiguous roots.
+while IFS= read -r -d '' manifest; do
+  candidate="$(dirname "$manifest")"
+  if [[ -f "$candidate/checksums/SHA256SUMS" && -d "$candidate/postgres" ]]; then
+    if [[ -n "$latest_dir" ]]; then
+      echo "Restore check failed: multiple backup manifests found" >&2
+      exit 70
+    fi
+    latest_dir="$candidate"
+  fi
+done < <(find "$RESTORE_ROOT" -type f -name manifest.json -print0)
 if [[ -z "$latest_dir" || ! -f "$latest_dir/manifest.json" ]]; then
   echo "Restore check failed: manifest.json not found" >&2
   exit 70

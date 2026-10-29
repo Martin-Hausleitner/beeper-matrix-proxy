@@ -876,6 +876,7 @@ Felix Faber | 2</textarea>
       }
 
       function bubbleLayout(participants, overlap, config = currentConfig()) {
+        if (participants.length === 0) return [];
         const count = Math.max(1, Math.min(10, participants.length));
         const gap = 2 + Math.floor(clamp(overlap, 0, 42) / 21);
         const r = groupAvatarBaseRadius(count);

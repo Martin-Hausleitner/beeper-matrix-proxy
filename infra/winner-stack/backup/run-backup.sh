@@ -44,7 +44,10 @@ fi
 
 BACKUP_STAGING_ROOT="${BACKUP_STAGING_ROOT:-/var/tmp/matrix-stack-backup}"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-STAGING="$BACKUP_STAGING_ROOT/$RUN_ID"
+# Plaintext dumps and signing keys must stay private, including on failure.
+umask 077
+mkdir -p "$BACKUP_STAGING_ROOT"
+STAGING="$(mktemp -d "$BACKUP_STAGING_ROOT/$RUN_ID.XXXXXX")"
 MANIFEST="$STAGING/manifest.json"
 mkdir -p "$STAGING"/{postgres,configs,s3,checksums}
 
@@ -109,24 +112,26 @@ if command -v aws >/dev/null 2>&1; then
   fi
 fi
 
-(cd "$STAGING" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 >checksums/SHA256SUMS)
-
-python3 - <<PY >"$MANIFEST"
-import json, os, pathlib, time
-root = pathlib.Path("$STAGING")
+python3 - "$STAGING" "$RUN_ID" "${POSTGRES_DATABASES:-synapse nextcloud}" <<'PY' >"$MANIFEST"
+import json, os, pathlib, sys, time
+root = pathlib.Path(sys.argv[1])
 files = []
 for path in sorted(p for p in root.rglob("*") if p.is_file()):
     rel = path.relative_to(root).as_posix()
+    if rel == "manifest.json":
+        continue
     files.append({"path": rel, "size": path.stat().st_size})
 summary = {
-    "run_id": "$RUN_ID",
+    "run_id": sys.argv[2],
     "created_at_unix": int(time.time()),
     "hostname": os.uname().nodename,
-    "postgres_databases": "${POSTGRES_DATABASES:-synapse nextcloud}".split(),
+    "postgres_databases": sys.argv[3].split(),
     "files": files,
 }
 print(json.dumps(summary, indent=2, sort_keys=True))
 PY
+
+(cd "$STAGING" && find . -type f ! -path './checksums/SHA256SUMS' -print0 | sort -z | xargs -0 shasum -a 256 >checksums/SHA256SUMS)
 
 restic backup "$STAGING" --tag matrix-stack --tag "$RUN_ID"
 

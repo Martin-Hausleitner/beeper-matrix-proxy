@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,67 @@ import (
 	"strings"
 	"testing"
 )
+
+type countedVoiceReader struct {
+	*strings.Reader
+	readBytes int
+	closed    bool
+}
+
+func (r *countedVoiceReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	r.readBytes += n
+	return n, err
+}
+
+func (r *countedVoiceReader) Close() error { r.closed = true; return nil }
+
+func TestMatrixVoiceAIStreamingLimitPreservesOriginalAndCleansTemp(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	temp := t.TempDir()
+	t.Setenv("TMPDIR", temp)
+	cfg := DefaultConfig()
+	cfg.VoiceAI.Enabled = true
+	cfg.VoiceAI.AllowChatIDs = []string{"fixture-chat"}
+	cfg.VoiceAI.MaxAudioBytes = 4
+	svc := NewService(cfg, store, &fakeBeeperAPI{}, &fakeMatrixSink{})
+	svc.voiceAI = fakeVoiceAIProcessor{err: errors.New("processor must not run")}
+	original := &countedVoiceReader{Reader: strings.NewReader("123456789")}
+	inbound := MatrixInbound{ChatID: "fixture-chat", MatrixEventID: "$fixture", Attachment: &OutboundAttachment{
+		Content: original, FileName: "fixture.ogg", MimeType: "audio/ogg", SizeBytes: 1,
+	}}
+	pending, err := svc.prepareMatrixInboundVoiceAI(ctx, &inbound)
+	defer inbound.Attachment.Content.Close()
+	if pending != nil && pending.cleanup != nil {
+		defer pending.cleanup()
+	}
+	if err != nil || pending != nil {
+		t.Fatalf("oversized stream must skip processor preparation: pending=%v err=%v", pending != nil, err)
+	}
+	if original.readBytes != 5 {
+		t.Fatalf("buffered %d bytes, want max+1=5", original.readBytes)
+	}
+	value, err := store.GetValue(ctx, voiceAIKVKey("matrix:$fixture", "$fixture"))
+	if err != nil || !strings.HasPrefix(value, "error:") {
+		t.Fatalf("missing held voice result: %q %v", value, err)
+	}
+	data, err := io.ReadAll(inbound.Attachment.Content)
+	if err != nil || string(data) != "123456789" {
+		t.Fatalf("original stream damaged: %q %v", data, err)
+	}
+	if err := inbound.Attachment.Content.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !original.closed {
+		t.Fatal("original stream was not closed")
+	}
+	files, err := filepath.Glob(filepath.Join(temp, "matrix-voice-ai-*"))
+	if err != nil || len(files) != 0 {
+		t.Fatalf("temporary audio remains: %v %v", files, err)
+	}
+}
 
 func TestLocalVoiceAIProcessorRunsCommandAndOpenAICompatibleSummary(t *testing.T) {
 	ctx := context.Background()

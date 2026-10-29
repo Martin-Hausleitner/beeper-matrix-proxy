@@ -1,7 +1,7 @@
 # Project Activity Tracking
 
-This repo uses ActivityWatch as the local signal source for project time
-tracking. ActivityWatch already records active windows, browser tabs, AFK state,
+This repo uses ActivityWatch as the local signal source for incoming project
+activity durations. ActivityWatch already records active windows, browser tabs, AFK state,
 and optional editor activity on this machine, so the project layer should not
 run a second invasive watcher.
 
@@ -47,7 +47,11 @@ scripts/project_activity.py report \
   --format markdown
 ```
 
-The report aggregates seconds/hours by project. By default it does not store raw
+The report sums incoming event seconds/hours by project. Window, browser and
+editor sources can overlap, and AFK time is not subtracted. These values are
+overlapping activity durations, not deduplicated active working time or billable
+hours. The JSON `duration_semantics` field and Markdown label state this limit.
+By default it does not store raw
 window titles or URLs. Use `--include-samples` only for debugging; even then the
 samples are SHA-256 prefixes, not plaintext titles.
 

@@ -47,6 +47,24 @@ type pendingMatrixVoiceAI struct {
 	cleanup   func()
 }
 
+// Replay the bounded prefix before the untouched remainder when voice processing
+// is skipped. The normal outbound send still receives the original audio bytes.
+type voiceAIReplayReadCloser struct {
+	io.Reader
+	buffered *os.File
+	original io.Closer
+	cleanup  func()
+}
+
+func (r *voiceAIReplayReadCloser) Close() error {
+	err := r.buffered.Close()
+	if originalErr := r.original.Close(); err == nil {
+		err = originalErr
+	}
+	r.cleanup()
+	return err
+}
+
 type LocalVoiceAIProcessor struct {
 	cfg    VoiceAIConfig
 	client *http.Client
@@ -348,7 +366,8 @@ func (s *Service) prepareMatrixInboundVoiceAI(ctx context.Context, inbound *Matr
 	}
 	tmpPath := tmp.Name()
 	cleanup := func() { _ = os.Remove(tmpPath) }
-	if _, err := io.Copy(tmp, inbound.Attachment.Content); err != nil {
+	written, err := copyVoiceAIAsset(tmp, inbound.Attachment.Content, s.cfg.VoiceAI.MaxAudioBytes)
+	if err != nil {
 		_ = tmp.Close()
 		cleanup()
 		return nil, s.rememberVoiceAIError(ctx, key, err)
@@ -357,12 +376,23 @@ func (s *Service) prepareMatrixInboundVoiceAI(ctx context.Context, inbound *Matr
 		cleanup()
 		return nil, s.rememberVoiceAIError(ctx, key, err)
 	}
-	_ = inbound.Attachment.Content.Close()
 	uploadFile, err := os.Open(tmpPath)
 	if err != nil {
 		cleanup()
 		return nil, s.rememberVoiceAIError(ctx, key, err)
 	}
+	if s.cfg.VoiceAI.MaxAudioBytes > 0 && written > s.cfg.VoiceAI.MaxAudioBytes {
+		inbound.Attachment.Content = &voiceAIReplayReadCloser{
+			Reader:   io.MultiReader(uploadFile, inbound.Attachment.Content),
+			buffered: uploadFile, original: inbound.Attachment.Content, cleanup: cleanup,
+		}
+		if err := s.rememberVoiceAIError(ctx, key, fmt.Errorf("Matrix audio exceeds configured voice AI limit %d", s.cfg.VoiceAI.MaxAudioBytes)); err != nil {
+			_ = inbound.Attachment.Content.Close()
+			return nil, err
+		}
+		return nil, nil
+	}
+	_ = inbound.Attachment.Content.Close()
 	inbound.Attachment.Content = uploadFile
 	return &pendingMatrixVoiceAI{
 		key:       key,

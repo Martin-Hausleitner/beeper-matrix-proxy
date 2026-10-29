@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -30,16 +30,25 @@ impl MediaStore {
         let hash = sha256_hex(&media.bytes);
         let relative_path = object_relative_path(&hash);
         let absolute_path = self.root.join(&relative_path);
-        if !absolute_path.exists() {
-            if let Some(parent) = absolute_path.parent() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!("create media object directory {}", parent.display())
-                })?;
+        if let Some(parent) = absolute_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("create media object directory {}", parent.display()))?;
+            match fs::symlink_metadata(&absolute_path) {
+                Ok(_) => validate_object(&absolute_path, &hash, media.bytes.len())?,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    let mut file = tempfile::NamedTempFile::new_in(parent)?;
+                    file.write_all(&media.bytes)?;
+                    file.as_file().sync_all()?;
+                    match file.persist_noclobber(&absolute_path) {
+                        Ok(_) => (),
+                        Err(err) if err.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                            validate_object(&absolute_path, &hash, media.bytes.len())?;
+                        }
+                        Err(err) => return Err(err.into()),
+                    }
+                }
+                Err(err) => return Err(err.into()),
             }
-            let mut file = fs::File::create(&absolute_path)
-                .with_context(|| format!("create media object {}", absolute_path.display()))?;
-            file.write_all(&media.bytes)
-                .with_context(|| format!("write media object {}", absolute_path.display()))?;
         }
         Ok(StoredMedia {
             hash,
@@ -47,6 +56,18 @@ impl MediaStore {
             relative_path: format!("objects/sha256/{}", relative_path.display()),
         })
     }
+}
+
+fn validate_object(path: &Path, hash: &str, size: usize) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_file() || metadata.len() != size as u64 || sha256_hex(&fs::read(path)?) != hash
+    {
+        bail!(
+            "existing media object failed integrity verification: {}",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 pub struct StoredMedia {
@@ -170,6 +191,51 @@ mod tests {
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
         );
         assert!(dir.path().join(&stored.relative_path).exists());
+        assert_eq!(store.store(&media)?.hash, stored.hash);
+        assert_eq!(
+            fs::read(dir.path().join(&stored.relative_path))?,
+            media.bytes
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_incomplete_existing_object_instead_of_certifying_it() -> Result<()> {
+        let dir = tempdir()?;
+        let store = MediaStore::new(dir.path());
+        let media = DownloadedMedia {
+            bytes: b"complete original".to_vec(),
+            mimetype: None,
+        };
+        let path = store
+            .root
+            .join(object_relative_path(&sha256_hex(&media.bytes)));
+        fs::create_dir_all(path.parent().unwrap())?;
+        fs::write(&path, b"partial")?;
+        assert!(store.store(&media).is_err());
+        assert_eq!(fs::read(path)?, b"partial");
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_symlink_is_not_accepted_as_an_archive_object() -> Result<()> {
+        let dir = tempdir()?;
+        let media = DownloadedMedia {
+            bytes: b"original".to_vec(),
+            mimetype: None,
+        };
+        let original = dir.path().join("original");
+        fs::write(&original, &media.bytes)?;
+        let store = MediaStore::new(dir.path());
+        let target = store
+            .root
+            .join(object_relative_path(&sha256_hex(&media.bytes)));
+        fs::create_dir_all(target.parent().unwrap())?;
+        std::os::unix::fs::symlink(&original, &target)?;
+        assert!(store.store(&media).is_err());
+        assert_eq!(fs::read(&original)?, media.bytes);
+        assert!(fs::symlink_metadata(target)?.file_type().is_symlink());
         Ok(())
     }
 }

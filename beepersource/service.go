@@ -828,6 +828,23 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, m
 	}
 	version := MessageVersion(msg)
 	if ok {
+		if msg.IsDeleted {
+			if existing.Version != version || existing.DeletedAt == nil {
+				txnID := DeterministicTxnID(msg.ChatID, msg.ID, MutationDelete, version)
+				if _, err := s.matrix.RedactMessage(ctx, roomID, existing.MatrixEventID, txnID, "deleted in Beeper source"); err != nil {
+					return err
+				}
+				now := time.Now().UTC()
+				existing.Version = version
+				existing.DeletedAt = &now
+				if err := s.store.UpsertMessageMapping(ctx, existing); err != nil {
+					return err
+				}
+			}
+			// The primary version may already be persisted when a secondary
+			// redaction fails. Always resume cleanup from stored mappings.
+			return s.redactAdditionalAttachments(ctx, roomID, msg, version)
+		}
 		if existing.Version == version {
 			if len(msg.Attachments) > 0 {
 				if err := s.maybeProcessVoiceAI(ctx, roomID, chat, msg, sender, msg.Attachments[0], msg.ID, existing.MatrixEventID, version); err != nil {
@@ -835,19 +852,6 @@ func (s *Service) mirrorMessage(ctx context.Context, roomID string, chat Chat, m
 				}
 			}
 			return s.mirrorAdditionalAttachments(ctx, roomID, chat, msg, sender, existing.MatrixEventID, version)
-		}
-		if msg.IsDeleted {
-			txnID := DeterministicTxnID(msg.ChatID, msg.ID, MutationDelete, version)
-			if _, err := s.matrix.RedactMessage(ctx, roomID, existing.MatrixEventID, txnID, "deleted in Beeper source"); err != nil {
-				return err
-			}
-			now := time.Now().UTC()
-			existing.Version = version
-			existing.DeletedAt = &now
-			if err := s.store.UpsertMessageMapping(ctx, existing); err != nil {
-				return err
-			}
-			return s.redactAdditionalAttachments(ctx, roomID, msg, version)
 		}
 		edit := s.matrixOutboundForMessage(roomID, msg, sender, version)
 		if avatar, err := s.senderAvatarMedia(ctx, sender); err == nil && avatar != nil {

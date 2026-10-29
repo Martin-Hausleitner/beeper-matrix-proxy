@@ -282,11 +282,8 @@ fn room_display_name(room: &RoomRecord) -> String {
 }
 
 fn room_file_name(room_id: &str) -> String {
-    let sanitized: String = room_id
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-        .collect();
-    format!("{sanitized}.html")
+    // A bounded filename also avoids collisions on case-insensitive filesystems.
+    format!("{}.html", crate::media::sha256_hex(room_id.as_bytes()))
 }
 
 fn timestamp_label(ts: Option<i64>) -> String {
@@ -319,6 +316,41 @@ mod tests {
     use super::*;
     use crate::store::{ArchiveStore, EventRecord, MediaRefRecord, RoomRecord};
     use tempfile::tempdir;
+
+    #[test]
+    fn distinct_matrix_room_ids_get_distinct_export_paths() -> Result<()> {
+        let dir = tempdir()?;
+        let store = ArchiveStore::open(dir.path())?;
+        let out = dir.path().join("html");
+        for (id, name) in [
+            ("!a-b:example.org", "First room"),
+            ("!a_b:example.org", "Second room"),
+        ] {
+            store.upsert_room(&RoomRecord {
+                room_id: id.into(),
+                name: Some(name.into()),
+                canonical_alias: None,
+                avatar_mxc: None,
+                joined_at: None,
+                last_prev_batch: None,
+                backfill_token: None,
+                backfill_done: false,
+            })?;
+        }
+        export_html(&store, dir.path(), &out)?;
+        let index = fs::read_to_string(out.join("index.html"))?;
+        for (id, name) in [
+            ("!a-b:example.org", "First room"),
+            ("!a_b:example.org", "Second room"),
+        ] {
+            let file = room_file_name(id);
+            assert!(index.contains(&format!("rooms/{file}")));
+            assert!(fs::read_to_string(out.join("rooms").join(file))?
+                .contains(&format!("<title>{name}</title>")));
+        }
+        assert_eq!(fs::read_dir(out.join("rooms"))?.count(), 2);
+        Ok(())
+    }
 
     #[test]
     fn html_export_escapes_message_text() -> Result<()> {
@@ -357,7 +389,7 @@ mod tests {
         })?;
         let out = dir.path().join("html");
         export_html(&store, dir.path(), &out)?;
-        let html = fs::read_to_string(out.join("rooms").join("_room_local.html"))?;
+        let html = fs::read_to_string(out.join("rooms").join(room_file_name("!room:local")))?;
         assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
         Ok(())
     }
@@ -410,7 +442,7 @@ mod tests {
         })?;
         let out = dir.path().join("html");
         export_html(&store, dir.path(), &out)?;
-        let html = fs::read_to_string(out.join("rooms").join("_room_local.html"))?;
+        let html = fs::read_to_string(out.join("rooms").join(room_file_name("!room:local")))?;
         assert!(html.contains("redacted media hidden"));
         assert!(!html.contains("mxc://server/redacted-media"));
         Ok(())
@@ -470,7 +502,7 @@ mod tests {
         })?;
         let out = dir.path().join("html");
         export_html(&store, dir.path(), &out)?;
-        let html = fs::read_to_string(out.join("rooms").join("_room_local.html"))?;
+        let html = fs::read_to_string(out.join("rooms").join(room_file_name("!room:local")))?;
         assert!(html.contains("<img loading=\"lazy\""));
         assert!(html.contains("alt=\"photo.png\""));
         assert!(html.contains("../objects/sha256/bb/bb/"));
@@ -539,7 +571,7 @@ mod tests {
         })?;
         let out = dir.path().join("html");
         export_html(&store, dir.path(), &out)?;
-        let html = fs::read_to_string(out.join("rooms").join("_room_local.html"))?;
+        let html = fs::read_to_string(out.join("rooms").join(room_file_name("!room:local")))?;
         assert!(html.contains("class=\"sender-avatar\""));
         assert!(html.contains("alt=\"Alice Example\""));
         assert!(html.contains(">Alice Example · "));

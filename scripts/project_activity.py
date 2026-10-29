@@ -29,7 +29,7 @@ DEFAULT_AW_URL = "http://127.0.0.1:5600"
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Aggregate ActivityWatch events by project")
+    parser = argparse.ArgumentParser(description="Aggregate incoming ActivityWatch durations by project (sources may overlap)")
     parser.add_argument("--aw-url", default=os.environ.get("ACTIVITYWATCH_URL", DEFAULT_AW_URL))
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -124,6 +124,7 @@ def cmd_report(args: argparse.Namespace) -> int:
 
     report = {
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "duration_semantics": "Sum of incoming event durations; sources may overlap. Not deduplicated active working time.",
         "range": {"start": start.isoformat(), "end": end.isoformat()},
         "source_buckets": bucket_ids,
         "events_seen": events_seen,
@@ -274,11 +275,13 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines = [
         "# Project Activity Report",
         "",
+        "Incoming activity duration (overlapping sources); not active working time.",
+        "",
         f"- Range: `{report['range']['start']}` to `{report['range']['end']}`",
         f"- Events seen: `{report['events_seen']}`",
         f"- Unmatched: `{report['unmatched_hours']}` h",
         "",
-        "| Project | Hours | Top apps |",
+        "| Project | Incoming hours (overlapping) | Top apps |",
         "|---|---:|---|",
     ]
     for project in report["projects"]:

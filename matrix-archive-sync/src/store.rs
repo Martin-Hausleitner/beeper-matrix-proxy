@@ -161,6 +161,14 @@ impl ArchiveStore {
                 detail TEXT NOT NULL,
                 created_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS backfill_ranges (
+                room_id TEXT NOT NULL REFERENCES rooms(room_id),
+                start_token TEXT NOT NULL,
+                state TEXT NOT NULL CHECK(state IN ('pending', 'active', 'complete')),
+                PRIMARY KEY(room_id, start_token)
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS backfill_ranges_active_idx
+                ON backfill_ranges(room_id) WHERE state='active';
             CREATE VIRTUAL TABLE IF NOT EXISTS event_fts USING fts5(
                 event_id UNINDEXED,
                 room_id UNINDEXED,
@@ -201,7 +209,8 @@ impl ArchiveStore {
                 avatar_mxc=COALESCE(excluded.avatar_mxc, rooms.avatar_mxc),
                 joined_at=COALESCE(rooms.joined_at, excluded.joined_at),
                 last_prev_batch=COALESCE(excluded.last_prev_batch, rooms.last_prev_batch),
-                backfill_token=COALESCE(excluded.backfill_token, rooms.backfill_token),
+                backfill_token=CASE WHEN rooms.backfill_done=1 THEN rooms.backfill_token
+                    ELSE COALESCE(rooms.backfill_token, excluded.backfill_token) END,
                 backfill_done=rooms.backfill_done
             "#,
             params![
@@ -246,17 +255,74 @@ impl ArchiveStore {
             .map_err(Into::into)
     }
 
+    pub fn enqueue_backfill_range(&self, room_id: &str, start_token: &str) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        let (cursor, done): (Option<String>, bool) = tx.query_row(
+            "SELECT backfill_token, backfill_done FROM rooms WHERE room_id=?",
+            [room_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let has_active: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM backfill_ranges WHERE room_id=? AND state='active')",
+            [room_id],
+            |row| row.get(0),
+        )?;
+        // An initial limited sync may already have seeded this exact cursor.
+        // Later gaps queue independently; opaque tokens have no ordering.
+        let state = if done || (!has_active && cursor.as_deref() == Some(start_token)) {
+            "active"
+        } else {
+            "pending"
+        };
+        let inserted = tx.execute(
+            "INSERT OR IGNORE INTO backfill_ranges(room_id, start_token, state) VALUES(?, ?, ?)",
+            params![room_id, start_token, state],
+        )?;
+        if done && inserted > 0 {
+            tx.execute(
+                "UPDATE rooms SET backfill_token=?, backfill_done=0 WHERE room_id=?",
+                params![start_token, room_id],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn update_backfill_cursor(
         &self,
         room_id: &str,
         token: Option<&str>,
         done: bool,
-    ) -> Result<()> {
-        self.conn.execute(
+    ) -> Result<Option<String>> {
+        let tx = self.conn.unchecked_transaction()?;
+        let next_token = if done {
+            // Legacy history has no active range row. It still hands off to
+            // pending gaps atomically when its current cursor is exhausted.
+            tx.execute(
+                "UPDATE backfill_ranges SET state='complete' WHERE room_id=? AND state='active'",
+                [room_id],
+            )?;
+            let next: Option<String> = tx.query_row(
+                "SELECT start_token FROM backfill_ranges WHERE room_id=? AND state='pending' ORDER BY rowid LIMIT 1",
+                [room_id],
+                |row| row.get(0),
+            ).optional()?;
+            if let Some(next) = &next {
+                tx.execute(
+                    "UPDATE backfill_ranges SET state='active' WHERE room_id=? AND start_token=?",
+                    params![room_id, next],
+                )?;
+            }
+            next
+        } else {
+            token.map(str::to_owned)
+        };
+        tx.execute(
             "UPDATE rooms SET backfill_token=?, backfill_done=? WHERE room_id=?",
-            params![token, i64::from(done), room_id],
+            params![next_token, i64::from(done && next_token.is_none()), room_id],
         )?;
-        Ok(())
+        tx.commit()?;
+        Ok(next_token)
     }
 
     pub fn insert_event(&self, event: &EventRecord) -> Result<()> {
@@ -489,21 +555,6 @@ impl ArchiveStore {
             .optional()
             .map_err(Into::into)
     }
-
-    pub fn media_objects(&self) -> Result<Vec<(String, i64, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT object_hash, size, storage_path FROM media_objects ORDER BY object_hash",
-        )?;
-        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
-    }
-
-    pub fn checkpoint(&self) -> Result<()> {
-        self.conn
-            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
-        Ok(())
-    }
 }
 
 fn read_room(row: &rusqlite::Row<'_>) -> rusqlite::Result<RoomRecord> {
@@ -591,6 +642,84 @@ fn to_sql_err(err: anyhow::Error) -> rusqlite::Error {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    fn backfill_room() -> RoomRecord {
+        RoomRecord {
+            room_id: "!room:local".into(),
+            name: None,
+            canonical_alias: None,
+            avatar_mxc: None,
+            joined_at: None,
+            last_prev_batch: Some("initial".into()),
+            backfill_token: Some("initial".into()),
+            backfill_done: false,
+        }
+    }
+
+    #[test]
+    fn range_handoff_rolls_back_if_room_cursor_update_fails() -> Result<()> {
+        let dir = tempdir()?;
+        let store = ArchiveStore::open(dir.path())?;
+        store.upsert_room(&backfill_room())?;
+        store.enqueue_backfill_range("!room:local", "initial")?;
+        store.enqueue_backfill_range("!room:local", "next-gap")?;
+        store.conn.execute_batch("CREATE TRIGGER fail_cursor_update BEFORE UPDATE ON rooms BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;")?;
+        assert!(store
+            .update_backfill_cursor("!room:local", None, true)
+            .is_err());
+        let state = |token: &str| -> Result<String> {
+            Ok(store.conn.query_row(
+                "SELECT state FROM backfill_ranges WHERE room_id=? AND start_token=?",
+                params!["!room:local", token],
+                |row| row.get(0),
+            )?)
+        };
+        assert_eq!(state("initial")?, "active");
+        assert_eq!(state("next-gap")?, "pending");
+        assert_eq!(
+            store.rooms_for_backfill(1)?[0].backfill_token.as_deref(),
+            Some("initial")
+        );
+        store
+            .conn
+            .execute_batch("DROP TRIGGER fail_cursor_update;")?;
+        assert_eq!(
+            store
+                .update_backfill_cursor("!room:local", None, true)?
+                .as_deref(),
+            Some("next-gap")
+        );
+        assert_eq!(state("initial")?, "complete");
+        assert_eq!(state("next-gap")?, "active");
+        Ok(())
+    }
+
+    #[test]
+    fn additive_migration_preserves_legacy_cursor_and_accepts_new_gap() -> Result<()> {
+        let dir = tempdir()?;
+        let store = ArchiveStore::open(dir.path())?;
+        store.upsert_room(&backfill_room())?;
+        store.update_backfill_cursor("!room:local", Some("legacy-progress"), false)?;
+        store.conn.execute_batch("DROP TABLE backfill_ranges;")?;
+        drop(store);
+        let store = ArchiveStore::open(dir.path())?;
+        assert_eq!(
+            store.rooms_for_backfill(1)?[0].backfill_token.as_deref(),
+            Some("legacy-progress")
+        );
+        store.enqueue_backfill_range("!room:local", "new-gap")?;
+        assert_eq!(
+            store.rooms_for_backfill(1)?[0].backfill_token.as_deref(),
+            Some("legacy-progress")
+        );
+        assert_eq!(
+            store
+                .update_backfill_cursor("!room:local", None, true)?
+                .as_deref(),
+            Some("new-gap")
+        );
+        Ok(())
+    }
 
     #[test]
     fn stores_events_idempotently_with_compressed_raw_json() -> Result<()> {
