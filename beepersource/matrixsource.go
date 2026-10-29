@@ -23,7 +23,7 @@ type MatrixClientSource struct {
 func NewMatrixClientSource(cfg Config, store *Store, accessToken string) *MatrixClientSource {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.Matrix.InsecureSkipTLS {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Local VCVM self-signed cert opt-in.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // Local self-signed cert opt-in.
 	}
 	return &MatrixClientSource{
 		cfg:    cfg,
@@ -58,7 +58,10 @@ func (m *MatrixClientSource) SyncOnce(ctx context.Context, service *Service) (in
 			if ev.Sender == m.cfg.Matrix.UserID || ev.EventID == "" {
 				continue
 			}
-			if err := m.handleEvent(ctx, service, chatID, ev); err != nil {
+			if ev.Content.VoiceAI != nil {
+				continue
+			}
+			if err := m.handleEvent(ctx, service, chatID, roomID, ev); err != nil {
 				return handled, err
 			}
 			handled++
@@ -70,7 +73,7 @@ func (m *MatrixClientSource) SyncOnce(ctx context.Context, service *Service) (in
 	return handled, nil
 }
 
-func (m *MatrixClientSource) handleEvent(ctx context.Context, service *Service, chatID string, ev matrixSyncEvent) error {
+func (m *MatrixClientSource) handleEvent(ctx context.Context, service *Service, chatID string, roomID string, ev matrixSyncEvent) error {
 	switch ev.Type {
 	case "m.room.message":
 		if target := ev.Content.RelatesTo.EventID; ev.Content.RelatesTo.RelType == "m.replace" && target != "" {
@@ -89,7 +92,9 @@ func (m *MatrixClientSource) handleEvent(ctx context.Context, service *Service, 
 		}
 		inbound := MatrixInbound{
 			ChatID:        chatID,
+			RoomID:        roomID,
 			MatrixEventID: ev.EventID,
+			SenderID:      ev.Sender,
 			Body:          body,
 			HTML:          ev.Content.FormattedBody,
 			ReplyToEvent:  ev.Content.RelatesTo.InReplyTo.EventID,
@@ -267,5 +272,6 @@ type matrixSyncEvent struct {
 				EventID string `json:"event_id"`
 			} `json:"m.in_reply_to"`
 		} `json:"m.relates_to"`
+		VoiceAI *VoiceAIMetadata `json:"com.openclaw.voice_ai"`
 	} `json:"content"`
 }

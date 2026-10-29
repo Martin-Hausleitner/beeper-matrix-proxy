@@ -35,8 +35,48 @@ func PlatformDisplayName(chat Chat) string {
 		return "X"
 	case "linkedin":
 		return "LinkedIn"
-	case "matrix":
+	case "matrix", "sh-vcvm-matrix", "beeper-matrix-proxy", "bridgev2":
 		return "Matrix"
+	case "creatorhero":
+		return "CreatorHero"
+	case "onlyfans":
+		return "OnlyFans"
+	case "fansly":
+		return "Fansly"
+	case "fanvue":
+		return "Fanvue"
+	case "mym", "mymfans":
+		return "MYM.fans"
+	case "fancentro":
+		return "FanCentro"
+	case "slushy":
+		return "Slushy"
+	case "uncove":
+		return "Uncove"
+	case "subscribestar":
+		return "SubscribeStar"
+	case "maloum":
+		return "Maloum"
+	case "dfans":
+		return "dFans"
+	case "manyvids":
+		return "ManyVids"
+	case "unlockd":
+		return "Unlockd"
+	case "sospoilt":
+		return "SoSpoilt"
+	case "xpanded":
+		return "Xpanded"
+	case "revealme":
+		return "RevealMe"
+	case "admireme":
+		return "AdmireMe"
+	case "camsoda":
+		return "CamSoda"
+	case "stacked":
+		return "Stacked"
+	case "fanview":
+		return "Fanview"
 	default:
 		return titleAccount(base)
 	}
@@ -87,6 +127,46 @@ func PlatformColor(chat Chat) string {
 		return "#0A66C2"
 	case "matrix":
 		return "#000000"
+	case "creatorhero":
+		return "#F2F0EC"
+	case "onlyfans":
+		return "#00AFF0"
+	case "fansly":
+		return "#2799F6"
+	case "fanvue":
+		return "#2027D2"
+	case "mym.fans":
+		return "#181A20"
+	case "fancentro":
+		return "#FF6B2A"
+	case "slushy":
+		return "#EF3B7D"
+	case "uncove":
+		return "#6C5CE7"
+	case "subscribestar":
+		return "#F59E0B"
+	case "maloum":
+		return "#111827"
+	case "dfans":
+		return "#7C3AED"
+	case "manyvids":
+		return "#E1007A"
+	case "unlockd":
+		return "#111111"
+	case "sospoilt":
+		return "#D946EF"
+	case "xpanded":
+		return "#166534"
+	case "revealme":
+		return "#0EA5E9"
+	case "admireme":
+		return "#EC4899"
+	case "camsoda":
+		return "#8B5CF6"
+	case "stacked":
+		return "#111827"
+	case "fanview":
+		return "#0098C7"
 	default:
 		return "#5662F6"
 	}

@@ -1,0 +1,11 @@
+{
+    "require": {
+        "lasserafn/php-initial-avatar-generator": "^4.1"
+    },
+
+	"autoload": {
+		"classmap": [
+			"Utils"
+		]
+	}
+}

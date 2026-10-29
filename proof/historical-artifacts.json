@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "source_commit": "59115492db2acef06d1d4bdaa5a497b90c36ae80",
+  "acceptance_status": "NOT_RUN_CURRENT_PRODUCT",
+  "history_status": "EXISTING_GIT_HISTORY_NOT_REWRITTEN",
+  "artifacts": [
+    {
+      "original_path": "proof/01_bridge_deleted_whoami.txt",
+      "original_bytes": 693,
+      "original_sha256": "7f14dff62baf99960f8e4b7fcfde4ddea7e603e098fdf59addea100fc78e995b",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/02_wa_signal_send_e2e.json",
+      "original_bytes": 553,
+      "original_sha256": "22042a7ac156fb8f5387ed27d97b7793f6e60b688d3d7f330365b06c80bb38d3",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/03_messages_verified.json",
+      "original_bytes": 23245,
+      "original_sha256": "51000a7dd433c33e3db9a62bd5030d829e79aa0c9d980f9da742c1aeea1741c3",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/04_matrix_archive_sync_plist.xml",
+      "original_bytes": 990,
+      "original_sha256": "4c80e41c54c9bbffce13479894b43c6415b61e97a2da415e391a19c4d5d4e5a9",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/05_matrix_sync_aw_check.sh",
+      "original_bytes": 832,
+      "original_sha256": "ec528eb1a8674e31f76c511116b9076215f3d7b0eff0470a736c73c1ce42485e",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/06_beeper_watchdog_plist.xml",
+      "original_bytes": 695,
+      "original_sha256": "2601d69ced689fc2f07943ef393360682456bf049d34a7b65613f69d2f3f8feb",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/07_beeper_watchdog_script.sh",
+      "original_bytes": 2094,
+      "original_sha256": "881c9e752e32053db815db1e1e9f70be5dc9b96f33bb7bc0cef579b68403b91a",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/08_beeper_watchdog_log.txt",
+      "original_bytes": 456,
+      "original_sha256": "3d35ee74c7467bdabcdf713a2d2d29134c20d9862086d8be0f58d93f44313f09",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/09_watchdog_liverun.txt",
+      "original_bytes": 180,
+      "original_sha256": "cbc43fdc686bae57cb990f9da8c0c4e074b6efe9365f84e7bf5b35d37973c269",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/10_direct_api_sender_e2e.json",
+      "original_bytes": 498,
+      "original_sha256": "db2edfed08d874cadfb96ecb4180d3836547debce5c00b088dd17afa799b7754",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/11_chatwoot_forwarder_docker_fix.json",
+      "original_bytes": 439,
+      "original_sha256": "2f6cf6f33d67415788eb0307a67f8581616e42aa5ad86c965340718ecaedf91e",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/12_beeper_send_direct_api.sh",
+      "original_bytes": 925,
+      "original_sha256": "b21260ac278fbed908827aa783b672b2dcb01cce01c0f2ec9b259a2a89f4b205",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/13_lrn_local_stack_e2e.json",
+      "original_bytes": 602,
+      "original_sha256": "5d76a3d325f38e4771e430e3b53fd71621480cafdfcebd31401b59cd0be079f5",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/14_csm_session_list.txt",
+      "original_bytes": 2055,
+      "original_sha256": "fa997b36345f4c929ecd38e31958d94affa95d15876332580d8f5c02f4f7d037",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/15_blockers.md",
+      "original_bytes": 1692,
+      "original_sha256": "fd580061b3bb1c2eb613bcf61568a6dc3af54f5bfbb8839f3826c4946aedf3a4",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/16_lrn_kpi_fresh.json",
+      "original_bytes": 3490,
+      "original_sha256": "f1b88f4d9f366103188a9a759c2c91ea4ea8a80e87bab6e96ef67455d577c8f6",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/17_bettervencordpatch_e2e.json",
+      "original_bytes": 333,
+      "original_sha256": "104da60be922169d07aea8781b5016ecfa20f2c5f2097ff6a53e9b1a0546994b",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    },
+    {
+      "original_path": "proof/18_axel_install_e2e.json",
+      "original_bytes": 319,
+      "original_sha256": "c0481d45cc75ece744a417d2725f55318727642dbfaab63e33b94c6194d88d54",
+      "status": "HISTORICAL_CONTENT_WITHHELD_NOT_REEXECUTED"
+    }
+  ]
+}

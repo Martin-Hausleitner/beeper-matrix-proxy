@@ -34,11 +34,11 @@ func MatrixGhostLocalpart(beeperSenderID string) string {
 }
 
 func MessageVersion(msg Message) string {
-	if msg.EditedTimestamp != nil {
-		return msg.EditedTimestamp.UTC().Format("20060102T150405.000000000Z")
-	}
 	if msg.IsDeleted {
 		return "deleted"
+	}
+	if msg.EditedTimestamp != nil {
+		return msg.EditedTimestamp.UTC().Format("20060102T150405.000000000Z")
 	}
 	if !msg.Timestamp.IsZero() {
 		return msg.Timestamp.UTC().Format("20060102T150405.000000000Z")

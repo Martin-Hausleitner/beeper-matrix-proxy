@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,6 +25,7 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 	var sentURL string
 	var sentFileName string
 	var sentReplyTo string
+	var sentVoiceAIKind string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/createRoom"):
@@ -64,6 +66,9 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 						EventID string `json:"event_id"`
 					} `json:"m.in_reply_to"`
 				} `json:"m.relates_to"`
+				VoiceAI struct {
+					Kind string `json:"kind"`
+				} `json:"com.openclaw.voice_ai"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode send body: %v", err)
@@ -72,6 +77,7 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 			sentURL = body.URL
 			sentFileName = body.FileName
 			sentReplyTo = body.RelatesTo.InReplyTo.EventID
+			sentVoiceAIKind = body.VoiceAI.Kind
 			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$event:local"})
 		default:
 			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
@@ -147,6 +153,30 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 
 	eventID, err = sink.SendMessage(ctx, MatrixOutbound{
 		RoomID:        roomID,
+		MessageID:     "$voice-ai",
+		Body:          "summary",
+		MsgType:       "m.notice",
+		ReplyToEvent:  "$parent:local",
+		TransactionID: "txn-voice-ai",
+		VoiceAI: &VoiceAIMetadata{
+			SourceMessageID: "$m-reply",
+			SourceEventID:   "$parent:local",
+			ChatID:          "!chat:beeper",
+			Kind:            voiceAIKindTranscriptSummary,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eventID != "$event:local" {
+		t.Fatalf("unexpected voice AI event ID %q", eventID)
+	}
+	if sentVoiceAIKind != voiceAIKindTranscriptSummary {
+		t.Fatalf("expected voice AI marker in Matrix payload, got %q", sentVoiceAIKind)
+	}
+
+	eventID, err = sink.SendMessage(ctx, MatrixOutbound{
+		RoomID:        roomID,
 		MessageID:     "$m2",
 		SenderID:      "@alice:whatsapp",
 		SenderName:    "Alice",
@@ -170,6 +200,278 @@ func TestMatrixClientSinkCreatesRoomAndSendsMessage(t *testing.T) {
 	}
 	if sentURL != "mxc://local/uploaded" || sentFileName != "image.png" {
 		t.Fatalf("unexpected media payload url=%q filename=%q", sentURL, sentFileName)
+	}
+}
+
+func TestMatrixClientSinkMarksDirectPortalInAccountData(t *testing.T) {
+	var createIsDirect bool
+	var directPayload map[string][]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/createRoom"):
+			var body struct {
+				IsDirect bool `json:"is_direct"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode create room body: %v", err)
+			}
+			createIsDirect = body.IsDirect
+			_ = json.NewEncoder(w).Encode(map[string]string{"room_id": "!dm:local"})
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/account_data/m.direct"):
+			http.Error(w, "not found", http.StatusNotFound)
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/account_data/m.direct"):
+			if err := json.NewDecoder(r.Body).Decode(&directPayload); err != nil {
+				t.Fatalf("decode m.direct body: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	roomID, err := sink.EnsurePortal(ctx, Chat{
+		ID:        "!signal-dm:beeper",
+		AccountID: "signal",
+		Network:   "Signal",
+		Name:      "Alice",
+		Participants: []Sender{{
+			ID:          "signal:+43660123456",
+			DisplayName: "Alice",
+		}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roomID != "!dm:local" || !createIsDirect {
+		t.Fatalf("expected direct room creation, roomID=%q isDirect=%v", roomID, createIsDirect)
+	}
+	target := "@" + MatrixGhostLocalpart("signal:+43660123456") + ":local"
+	if got := directPayload[target]; len(got) != 1 || got[0] != "!dm:local" {
+		t.Fatalf("expected m.direct target %s to contain room, got %#v", target, directPayload)
+	}
+}
+
+func TestMatrixClientSinkRefreshesExistingDirectPortalAccountData(t *testing.T) {
+	var directPayload map[string][]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.room.name/"):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$name"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.room.topic/"):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$topic"})
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/account_data/m.direct"):
+			_ = json.NewEncoder(w).Encode(map[string][]string{
+				"@old:local":   {"!existing:local"},
+				"@other:local": {"!other:local"},
+			})
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/account_data/m.direct"):
+			if err := json.NewDecoder(r.Body).Decode(&directPayload); err != nil {
+				t.Fatalf("decode m.direct body: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{
+		ID:        "!signal-dm:beeper",
+		AccountID: "signal",
+		Network:   "Signal",
+		Name:      "Alice",
+		Participants: []Sender{{
+			ID:          "signal:+43660123456",
+			DisplayName: "Alice",
+		}},
+	}
+	if err := store.UpsertPortal(ctx, chat, "!existing:local", "cursor"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetValue(ctx, portalProfileSyncKey(chat.ID), "stale-profile"); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	roomID, err := sink.EnsurePortal(ctx, chat, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roomID != "!existing:local" {
+		t.Fatalf("unexpected room ID %q", roomID)
+	}
+	if _, ok := directPayload["@old:local"]; ok {
+		t.Fatalf("expected stale direct room link to be removed, got %#v", directPayload)
+	}
+	if got := directPayload["@other:local"]; len(got) != 1 || got[0] != "!other:local" {
+		t.Fatalf("expected unrelated m.direct entry to remain, got %#v", directPayload)
+	}
+	target := "@" + MatrixGhostLocalpart("signal:+43660123456") + ":local"
+	if got := directPayload[target]; len(got) != 1 || got[0] != "!existing:local" {
+		t.Fatalf("expected refreshed m.direct target %s to contain room, got %#v", target, directPayload)
+	}
+}
+
+func TestMatrixClientSinkAddsSenderAvatarToPerMessageProfile(t *testing.T) {
+	var uploadedContentType string
+	var profileAvatarURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/upload"):
+			uploadedContentType = r.Header.Get("Content-Type")
+			_ = json.NewEncoder(w).Encode(map[string]string{"content_uri": "mxc://local/sender-avatar"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/send/m.room.message/"):
+			var body struct {
+				Profile struct {
+					AvatarURL string `json:"avatar_url"`
+				} `json:"com.beeper.per_message_profile"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode send body: %v", err)
+			}
+			profileAvatarURL = body.Profile.AvatarURL
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$event:local"})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = sink.SendMessage(ctx, MatrixOutbound{
+		RoomID:        "!room:local",
+		MessageID:     "$m1",
+		SenderID:      "@alice:signal",
+		SenderName:    "Alice",
+		Body:          "hello",
+		MsgType:       "m.text",
+		TransactionID: "txn-avatar",
+		SenderAvatar: &MatrixMedia{
+			AssetID:   "localmxc://alice-avatar",
+			Content:   bytes.NewReader([]byte("avatar")),
+			FileName:  "alice.png",
+			MimeType:  "image/png",
+			SizeBytes: 6,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploadedContentType != "image/png" {
+		t.Fatalf("expected sender avatar upload content-type, got %q", uploadedContentType)
+	}
+	if profileAvatarURL != "mxc://local/sender-avatar" {
+		t.Fatalf("expected per-message profile avatar URL, got %q", profileAvatarURL)
+	}
+
+	_, err = sink.SendMessage(ctx, MatrixOutbound{
+		RoomID:        "!room:local",
+		MessageID:     "$m2",
+		SenderID:      "@alice:signal",
+		SenderName:    "Alice",
+		Body:          "cached",
+		MsgType:       "m.text",
+		TransactionID: "txn-avatar-cached",
+		SenderAvatar: &MatrixMedia{
+			AssetID: "localmxc://alice-avatar",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profileAvatarURL != "mxc://local/sender-avatar" {
+		t.Fatalf("expected cached per-message profile avatar URL, got %q", profileAvatarURL)
+	}
+}
+
+func TestMatrixClientSinkIgnoresSenderAvatarUploadFailure(t *testing.T) {
+	var sent bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/upload"):
+			http.Error(w, "too large", http.StatusRequestEntityTooLarge)
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/send/m.room.message/"):
+			sent = true
+			var body struct {
+				Profile struct {
+					AvatarURL string `json:"avatar_url"`
+				} `json:"com.beeper.per_message_profile"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode send body: %v", err)
+			}
+			if body.Profile.AvatarURL != "" {
+				t.Fatalf("expected failed avatar upload to be omitted, got %q", body.Profile.AvatarURL)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$event:local"})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := sink.SendMessage(ctx, MatrixOutbound{
+		RoomID:        "!room:local",
+		MessageID:     "$m1",
+		SenderID:      "@alice:signal",
+		SenderName:    "Alice",
+		Body:          "hello",
+		MsgType:       "m.text",
+		TransactionID: "txn-avatar-fail",
+		SenderAvatar: &MatrixMedia{
+			AssetID:   "localmxc://alice-avatar",
+			Content:   bytes.NewReader([]byte("avatar")),
+			FileName:  "alice.png",
+			MimeType:  "image/png",
+			SizeBytes: 6,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !sent {
+		t.Fatal("expected message send to continue after sender avatar upload failure")
 	}
 }
 
@@ -431,7 +733,7 @@ func TestMatrixClientSinkCreatesServiceSpacesAndLinksPortals(t *testing.T) {
 	if err := sink.EnsurePortalSpaces(ctx, []Chat{wa, sig}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(createdSpaces, ",") != "Beeper,Signal,WhatsApp" {
+	if strings.Join(createdSpaces, ",") != "All Chats,Signal,WhatsApp" {
 		t.Fatalf("unexpected space creation order/names: %#v", createdSpaces)
 	}
 	if uploadCount != 3 {
@@ -445,6 +747,77 @@ func TestMatrixClientSinkCreatesServiceSpacesAndLinksPortals(t *testing.T) {
 	for _, want := range []string{"!space-signal:local", "!space-whatsapp:local"} {
 		if !pathsContainEscapedRoomID(spaceParentLinks, want) {
 			t.Fatalf("expected m.space.parent link for %s in %#v", want, spaceParentLinks)
+		}
+	}
+}
+
+func TestMatrixClientSinkCanCreatePlatformAccountSpaceHierarchy(t *testing.T) {
+	var createdSpaces []string
+	var spaceChildLinks []string
+	var uploadCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/createRoom"):
+			var body struct {
+				Name string `json:"name"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode create room: %v", err)
+			}
+			createdSpaces = append(createdSpaces, body.Name)
+			roomID := "!space-" + strings.ToLower(strings.NewReplacer(" ", "-", "·", "").Replace(body.Name)) + ":local"
+			_ = json.NewEncoder(w).Encode(map[string]string{"room_id": roomID})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/upload"):
+			uploadCount++
+			_ = json.NewEncoder(w).Encode(map[string]string{"content_uri": fmt.Sprintf("mxc://local/upload-%d", uploadCount)})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.space.child/"):
+			spaceChildLinks = append(spaceChildLinks, r.URL.Path)
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$child:local"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.space.parent/"):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$parent:local"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.room."):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$state:local"})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	wa := Chat{ID: "!wa:beeper", AccountID: "local-whatsapp_main", Network: "WhatsApp", Name: "Family"}
+	sig := Chat{ID: "!sig:beeper", AccountID: "local-signal_support", Network: "Signal", Name: "Support"}
+	if err := store.UpsertPortal(ctx, wa, "!portal-wa:local", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertPortal(ctx, sig, "!portal-sig:local", ""); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	cfg.Matrix.SpaceGrouping = "platform-account"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sink.EnsurePortalSpaces(ctx, []Chat{wa, sig}); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(createdSpaces, ",")
+	for _, want := range []string{"All Chats", "Signal", "Signal · Support", "WhatsApp", "WhatsApp · Main"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("expected created spaces to include %q, got %#v", want, createdSpaces)
+		}
+	}
+	if uploadCount != 5 {
+		t.Fatalf("expected root, platform, and account space avatars to upload, got %d", uploadCount)
+	}
+	for _, want := range []string{"!portal-wa:local", "!portal-sig:local"} {
+		if !pathsContainEscapedRoomID(spaceChildLinks, want) {
+			t.Fatalf("expected room child link for %s in %#v", want, spaceChildLinks)
 		}
 	}
 }
@@ -554,6 +927,140 @@ func TestMatrixClientSinkUpdatesExistingRoomAvatar(t *testing.T) {
 	}
 	if !sawName || !sawTopic {
 		t.Fatalf("expected existing room name/topic refresh, name=%v topic=%v", sawName, sawTopic)
+	}
+}
+
+func TestMatrixClientSinkReuploadsAvatarWhenContentHashChanges(t *testing.T) {
+	var uploadCount int
+	var stateAvatarURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/upload"):
+			uploadCount++
+			_ = json.NewEncoder(w).Encode(map[string]string{"content_uri": "mxc://local/new-avatar"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.room.avatar/"):
+			var body struct {
+				URL string `json:"url"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode state body: %v", err)
+			}
+			stateAvatarURL = body.URL
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$avatar:local"})
+		case r.Method == http.MethodPut && (strings.Contains(r.URL.Path, "/state/m.room.name/") || strings.Contains(r.URL.Path, "/state/m.room.topic/")):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$state:local"})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{ID: "!chat:beeper", AccountID: "signal", Name: "Existing"}
+	if err := store.UpsertPortal(ctx, chat, "!existing:local", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertMediaCache(ctx, MatrixMedia{
+		AssetID:     "avatar-asset",
+		ContentHash: "old-hash",
+		MimeType:    "image/png",
+		SizeBytes:   3,
+	}, "mxc://local/old-avatar"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = sink.EnsurePortal(ctx, chat, &MatrixMedia{
+		AssetID:     "avatar-asset",
+		ContentHash: "new-hash",
+		Content:     bytes.NewReader([]byte("new")),
+		FileName:    "avatar.png",
+		MimeType:    "image/png",
+		SizeBytes:   3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploadCount != 1 {
+		t.Fatalf("expected changed avatar hash to upload once, got %d", uploadCount)
+	}
+	if stateAvatarURL != "mxc://local/new-avatar" {
+		t.Fatalf("expected new avatar state, got %q", stateAvatarURL)
+	}
+}
+
+func TestMatrixClientSinkReusesAvatarCacheWhenContentHashMatches(t *testing.T) {
+	var uploadCount int
+	var stateAvatarURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/upload"):
+			uploadCount++
+			_ = json.NewEncoder(w).Encode(map[string]string{"content_uri": "mxc://local/should-not-upload"})
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/state/m.room.avatar/"):
+			var body struct {
+				URL string `json:"url"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode state body: %v", err)
+			}
+			stateAvatarURL = body.URL
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$avatar:local"})
+		case r.Method == http.MethodPut && (strings.Contains(r.URL.Path, "/state/m.room.name/") || strings.Contains(r.URL.Path, "/state/m.room.topic/")):
+			_ = json.NewEncoder(w).Encode(map[string]string{"event_id": "$state:local"})
+		default:
+			t.Fatalf("unexpected Matrix request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	store := openTestStore(t)
+	defer store.Close()
+	chat := Chat{ID: "!chat:beeper", AccountID: "signal", Name: "Existing"}
+	if err := store.UpsertPortal(ctx, chat, "!existing:local", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertMediaCache(ctx, MatrixMedia{
+		AssetID:     "avatar-asset",
+		ContentHash: "same-hash",
+		MimeType:    "image/png",
+		SizeBytes:   3,
+	}, "mxc://local/cached-avatar"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := DefaultConfig()
+	cfg.Matrix.HomeserverURL = server.URL
+	cfg.Matrix.UserID = "@proxy:local"
+	sink, err := NewMatrixClientSink(cfg, store, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = sink.EnsurePortal(ctx, chat, &MatrixMedia{
+		AssetID:     "avatar-asset",
+		ContentHash: "same-hash",
+		Content:     bytes.NewReader([]byte("new")),
+		FileName:    "avatar.png",
+		MimeType:    "image/png",
+		SizeBytes:   3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploadCount != 0 {
+		t.Fatalf("expected matching avatar hash to reuse cache, got %d uploads", uploadCount)
+	}
+	if stateAvatarURL != "mxc://local/cached-avatar" {
+		t.Fatalf("expected cached avatar state, got %q", stateAvatarURL)
 	}
 }
 

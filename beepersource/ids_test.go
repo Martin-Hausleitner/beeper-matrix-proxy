@@ -1,6 +1,9 @@
 package beepersource
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestDeterministicTxnIDIsStableAndScopedByMutationVersion(t *testing.T) {
 	first := DeterministicTxnID("!chat:beeper", "$msg:beeper", MutationMessage, "v1")
@@ -31,5 +34,17 @@ func TestMatrixGhostIDIsStableAndSanitized(t *testing.T) {
 	}
 	if len(got) < len("beeper_") || got[:len("beeper_")] != "beeper_" {
 		t.Fatalf("unexpected ghost localpart %q", got)
+	}
+}
+
+func TestMessageVersionPrioritizesDeletionOverEditTimestamp(t *testing.T) {
+	edited := time.Unix(200, 0).UTC()
+	version := MessageVersion(Message{
+		Timestamp:       time.Unix(100, 0).UTC(),
+		EditedTimestamp: &edited,
+		IsDeleted:       true,
+	})
+	if version != "deleted" {
+		t.Fatalf("expected deleted version to win, got %q", version)
 	}
 }

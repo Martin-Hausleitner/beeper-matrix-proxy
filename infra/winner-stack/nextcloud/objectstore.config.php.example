@@ -1,0 +1,32 @@
+<?php
+
+// Copy to objectstore.config.php on the host before first productive use.
+// Do not enable primary object storage after user files already exist locally
+// unless you have a tested migration plan.
+
+$CONFIG = [
+    'objectstore' => [
+        'class' => '\\OC\\Files\\ObjectStore\\S3',
+        'arguments' => [
+            'bucket' => getenv('S3_BUCKET'),
+            'hostname' => getenv('S3_HOST'),
+            'key' => getenv('S3_KEY'),
+            'secret' => getenv('S3_SECRET'),
+            'region' => getenv('S3_REGION') ?: '',
+            'use_ssl' => filter_var(getenv('S3_USE_SSL') ?: 'true', FILTER_VALIDATE_BOOLEAN),
+            'use_path_style' => filter_var(getenv('S3_USE_PATH_STYLE') ?: 'true', FILTER_VALIDATE_BOOLEAN),
+        ],
+    ],
+    'memcache.local' => '\\OC\\Memcache\\APCu',
+    'memcache.locking' => '\\OC\\Memcache\\Redis',
+    'redis' => [
+        'host' => getenv('REDIS_HOST') ?: 'nextcloud-redis',
+        'port' => 6379,
+        'password' => getenv('REDIS_PASSWORD'),
+    ],
+    'default_phone_region' => 'AT',
+    'enable_previews' => true,
+    'preview_max_x' => 2048,
+    'preview_max_y' => 2048,
+    'preview_max_memory' => 128,
+];

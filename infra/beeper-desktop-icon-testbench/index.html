@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Beeper Bridgev2 Icon Testbench</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: #19191c;
+        color: #f5f5f7;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: minmax(260px, 360px) 1fr;
+      }
+
+      aside {
+        background: #2e2e34;
+        padding: 28px 22px;
+        border-right: 1px solid #45454d;
+      }
+
+      main {
+        padding: 34px;
+        display: grid;
+        align-content: start;
+        gap: 28px;
+      }
+
+      h1 {
+        font-size: 20px;
+        margin: 0 0 8px;
+        letter-spacing: 0;
+      }
+
+      p {
+        color: #c8c8d0;
+        line-height: 1.5;
+      }
+
+      label {
+        display: grid;
+        gap: 10px;
+        margin-top: 24px;
+        font-size: 13px;
+        color: #d9d9df;
+      }
+
+      input {
+        color: #f5f5f7;
+        background: #242429;
+        border: 1px solid #53535c;
+        border-radius: 8px;
+        padding: 10px;
+      }
+
+      .rail-frame {
+        width: 118px;
+        background: #55555c;
+        border-radius: 18px;
+        padding: 18px 0;
+        display: grid;
+        justify-items: center;
+        gap: 18px;
+        box-shadow: 0 18px 54px rgba(0, 0, 0, 0.28);
+      }
+
+      .rail-icon,
+      .custom-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+        display: grid;
+        place-items: center;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.24);
+        overflow: hidden;
+      }
+
+      .rail-icon {
+        background: #3f3f45;
+        color: #f5f5f7;
+        font-size: 15px;
+      }
+
+      .custom-icon {
+        background: #262830;
+      }
+
+      .custom-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .dots {
+        color: #f5f5f7;
+        letter-spacing: 4px;
+        font-size: 20px;
+        line-height: 1;
+      }
+
+      .panel {
+        max-width: 760px;
+        background: #242429;
+        border: 1px solid #3f3f47;
+        border-radius: 8px;
+        padding: 20px;
+      }
+
+      code,
+      pre {
+        font-family:
+          "SF Mono", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        background: #17171a;
+        border: 1px solid #393942;
+        border-radius: 8px;
+        padding: 14px;
+        color: #dfe7ff;
+      }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <h1>Bridgev2 Icon Testbench</h1>
+      <p>
+        Preview a local image inside the same compact rounded sidebar shape used
+        by Beeper Desktop.
+      </p>
+      <label>
+        Choose a local image
+        <input id="imageInput" type="file" accept="image/*" />
+      </label>
+    </aside>
+
+    <main>
+      <section class="rail-frame" aria-label="Beeper sidebar icon preview">
+        <div class="rail-icon">⌘</div>
+        <div class="rail-icon">✉</div>
+        <div class="custom-icon">
+          <img id="preview" alt="Custom bridgev2 icon preview" />
+        </div>
+        <div class="dots">...</div>
+      </section>
+
+      <section class="panel">
+        <h1>Patch Command</h1>
+        <p>
+          Browsers intentionally hide the absolute local file path. After choosing
+          a file, run the command below and replace the placeholder with the
+          selected image path from Finder.
+        </p>
+        <pre id="command">node scripts/patch_beeper_desktop_bridgev2_icon.cjs --image /absolute/path/to/icon.png</pre>
+      </section>
+    </main>
+
+    <script>
+      const input = document.querySelector("#imageInput");
+      const preview = document.querySelector("#preview");
+
+      const fallbackSvg =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#6953f2"/><stop offset="1" stop-color="#0c52f9"/></linearGradient></defs><rect width="128" height="128" rx="40" fill="url(#g)"/><path d="M35 39h58v34H56L42 87V73h-7z" fill="white"/></svg>';
+
+      preview.src = `data:image/svg+xml;base64,${btoa(fallbackSvg)}`;
+
+      input.addEventListener("change", () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        preview.src = URL.createObjectURL(file);
+      });
+    </script>
+  </body>
+</html>

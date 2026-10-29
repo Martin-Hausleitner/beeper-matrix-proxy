@@ -12,6 +12,9 @@ import (
 )
 
 func platformLogoPNG(platform string, bgHex string) ([]byte, bool) {
+	if pngBytes, ok := brandAppIconPNG(platform, bgHex); ok {
+		return pngBytes, true
+	}
 	bg := parseHexColor(bgHex)
 	fg := color.RGBA{R: 255, G: 255, B: 255, A: 255}
 	img := image.NewRGBA(image.Rect(0, 0, 256, 256))
@@ -87,6 +90,18 @@ func platformLogoPNG(platform string, bgHex string) ([]byte, bool) {
 	var out bytes.Buffer
 	_ = png.Encode(&out, img)
 	return out.Bytes(), true
+}
+
+func brandAppIconPNG(platform string, bgHex string) ([]byte, bool) {
+	icon, ok := brandIconByKey(platform)
+	if !ok {
+		return nil, false
+	}
+	body, ok := brandIconPNGByKey(icon.Key)
+	if !ok {
+		return nil, false
+	}
+	return body, true
 }
 
 func parseHexColor(raw string) color.RGBA {

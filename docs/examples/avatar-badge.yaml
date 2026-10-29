@@ -1,0 +1,54 @@
+avatar_badge:
+  # Client profile presets:
+  # - cinny: near-corner badges and dense group bubbles for Cinny room lists.
+  # - element: circle-safe badges for Element Web/Desktop's round crops.
+  # - generic: conservative Matrix-client defaults.
+  # - beeper-native / bipa-native: leave Beeper/BIPA-style avatars alone.
+  # - custom: use only the explicit values below.
+  client_profile: cinny
+
+  # Disable this together with avatar_badges=false when a native client already
+  # renders the source app context and generated fallbacks should stay plain.
+  fallback_badges: true
+
+  # bottom-right is the default and matches the native app-badge look.
+  # Other values: bottom-left, top-right, top-left.
+  position: bottom-right
+
+  # edge keeps the messenger badge visually tight in Cinny's rounded-square list.
+  # Use circle-safe when a client hard-crops every avatar to a circle.
+  layout: edge
+
+  # rounded keeps app-icon geometry; circle is available for fully round badges.
+  shape: rounded
+
+  # Percent of the 256px avatar canvas. The Cinny profile default is 28.
+  size_percent: 28
+
+  # Keep the app icon directly on the lower-right visual edge in Cinny.
+  inset_percent: 0
+
+  # The Cinny profile keeps this off for a flatter app-icon badge.
+  shadow: false
+
+group_avatar:
+  # auto creates clustered initials bubbles for group rooms.
+  # initials forces a single initials avatar instead of grouped bubbles.
+  style: auto
+
+  # Number of visible people in generated group avatars.
+  max_participants: 10
+
+  # Higher values pull the participant bubbles closer together.
+  overlap_percent: 34
+
+  # Hide yourself from generated group bubbles when the Beeper participant list
+  # contains your own account.
+  exclude_self: true
+
+  # Optional Beeper sender IDs / display aliases for your own accounts.
+  self_ids: []
+
+matrix:
+  # Set this to false for a strict initials-only setup without real source photos.
+  dm_participant_avatars: false

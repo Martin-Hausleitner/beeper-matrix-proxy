@@ -1,0 +1,26 @@
+[package]
+name = "matrix-archive-sync"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Standard Matrix API chat archive sync with SQLite, zstd raw events, and content-addressed media"
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["clock", "serde"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+hex = "0.4"
+html-escape = "0.2"
+pathdiff = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tempfile = "3.13"
+tokio = { version = "1.41", features = ["macros", "rt-multi-thread", "time"] }
+urlencoding = "2.1"
+zstd = "0.13"
+
+[dev-dependencies]
+assert_fs = "1.1"
